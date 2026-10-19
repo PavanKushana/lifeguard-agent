@@ -1,0 +1,28 @@
+======================================================================
+MODEL: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B
+Time: 1.6 s | Tokens: 71 in, 301 out
+----------------------------------------------------------------------
+- **What happened?** PostgreSQL tried to write a temporary WAL (write‑ahead‑log) file (`pg_wal/xlogtemp.*`) but the underlying filesystem ran out of space, so the write failed and the server aborted.  
+- **First‑level check:** Run `df -h` (or `mount`) on the directory that holds `pg_wal` (usually `/var/lib/pgsql/data/pg_wal` or `/pg_wal`). Confirm that the mount point is at 0 % free or close to it.  
+- **Next steps:** Free up space (remove old logs, truncate/rotate `pg_wal` archives, expand the volume, or pause heavy write workloads), then verify that free space returns to a safe margin (≥ 10‑20 % of the volume) before restarting PostgreSQL.
+======================================================================
+MODEL: nvidia/Nemotron-3_5-Lightning
+Time: 2.9 s | Tokens: 71 in, 675 out
+----------------------------------------------------------------------
+- The error means PostgreSQL failed to write a critical WAL temp file because the hosting filesystem is 100% full, blocking transaction commits to protect data consistency.  
+- First, confirm real-time usage on the mount point containing `pg_wal` with `df -h` to verify space exhaustion and identify the consumed capacity.  
+- Immediately investigate and remove/truncate large logs, old WAL archives, or temp files filling the volume, then free space or expand the filesystem before restarting PostgreSQL.
+======================================================================
+MODEL: nvidia/nemotron-3-super-120b-a12b
+Time: 1.5 s | Tokens: 71 in, 206 out
+----------------------------------------------------------------------
+- The PostgreSQL server tried to append a new WAL segment (`pg_wal/xlogtemp.123`) but the filesystem holding `pg_wal` is out of free space, causing a fatal error that aborts writes/checkpoints.  
+- **First check:** Verify available disk space on the volume/mount point containing `$PGDATA/pg_wal` (e.g., `df -h /path/to/pgdata`). Look for other large files or lingering temporary segments that may be consuming space.  
+- If space is indeed exhausted, either free up/delete non‑essential data, expand the filesystem/storage, or adjust WAL retention settings (`wal_keep_size`, `archive_command`, checkpoint_segments) to reduce WAL growth until more capacity is added.
+======================================================================
+MODEL: nvidia/Nemotron-3-Ultra-550b-a55b
+Time: 1.1 s | Tokens: 71 in, 215 out
+----------------------------------------------------------------------
+- **Meaning**: PostgreSQL cannot write a temporary WAL file because the filesystem hosting `pg_wal/` is 100 % full; the database will panic and shut down to avoid corruption.  
+- **First check**: Run `df -h /path/to/pg_wal` (or the mount point shown by `pg_lsclusters`/`psql -c 'show data_directory'`) to confirm zero free space and identify the volume.  
+- **Immediate action**: Free space *now*—delete/rotate old base backups, drop unused replication slots, truncate runaway `pg_wal` files after verifying replicas are caught up, or expand the volume—then restart PostgreSQL.
