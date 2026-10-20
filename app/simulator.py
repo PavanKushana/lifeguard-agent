@@ -55,6 +55,8 @@ class Server:
 
     def __init__(self) -> None:
         """Build a healthy server: 4 containers, 2 disks, normal logs and a short change history."""
+        # The machine's total memory. All container memory limits together must fit into it.
+        self.memory_total_mb = 8192
         self.containers = {
             "web": Container("web", "nginx:1.27", cpu_percent=0.5,
                              memory_mb=25, memory_limit_mb=256),

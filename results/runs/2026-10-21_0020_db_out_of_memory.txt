@@ -1,0 +1,199 @@
+Run: db_out_of_memory at 2026-10-21 00:20
+Models: triage=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B, investigator=nvidia/nemotron-3-super-120b-a12b, final_call=nvidia/Nemotron-3-Ultra-550b-a55b
+
+ALERT: The new sales report page shows an error, and the whole shop keeps going down for a minute.
+
+[TRIAGE (Nano)]
+    {
+      "severity": "critical",
+      "category": "crash",
+      "first_guess": "The API service is crashing, causing the shop to go down for a minute.",
+      "check_first": "Logs and health status of the api container"
+    }
+
+[TOOL CALL]
+    list_containers({})
+
+[RESULT]
+    NAME    IMAGE               RESTARTS  STATUS
+    web     nginx:1.27          0         Up 12 days
+    api     shopapp/api:2.4.0   0         Up 40 minutes
+    db      postgres:16         3         Up 2 minutes
+    cache   redis:7.4           0         Up 9 days
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/"})
+
+[RESULT]
+    HTTP 200 in 40 ms
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/api/health"})
+
+[RESULT]
+    HTTP 503 in 12 ms
+
+[TOOL CALL]
+    get_logs({"container": "api", "lines": 30})
+
+[RESULT]
+    2026-10-18 00:20:26 INFO Connected to database db:5432
+    2026-10-18 00:20:26 INFO Connected to cache cache:6379
+    2026-10-20 23:25:26 INFO GET /api/products 200 in 42ms
+    2026-10-20 23:39:26 INFO GET /api/products 200 in 42ms
+    2026-10-20 23:40:26 INFO Starting shopapp api 2.4.0
+    2026-10-20 23:43:26 ERROR GET /api/reports/sales 500: server closed the connection unexpectedly
+    2026-10-20 23:50:26 INFO GET /api/products 200 in 42ms
+    2026-10-21 00:01:26 ERROR GET /api/reports/sales 500: server closed the connection unexpectedly
+    2026-10-21 00:02:26 INFO GET /api/products 200 in 42ms
+    2026-10-21 00:02:26 ERROR GET /api/products 503: connection to db:5432 refused
+    2026-10-21 00:14:26 INFO GET /api/products 200 in 42ms
+    2026-10-21 00:17:26 ERROR GET /api/reports/sales 500: server closed the connection unexpectedly
+    2026-10-21 00:18:26 INFO GET /api/products 200 in 42ms
+    2026-10-21 00:18:26 ERROR GET /api/products 503: connection to db:5432 refused
+
+[TOOL CALL]
+    get_logs({"container": "db", "lines": 30})
+
+[RESULT]
+    2026-10-09 00:20:26 LOG:  database system is ready to accept connections
+    2026-10-20 23:43:26 LOG:  server process (PID 2211) was terminated by signal 9: Killed
+    2026-10-20 23:43:26 DETAIL:  Failed process was running: SELECT o.*, c.*, p.* FROM orders o JOIN customers c ON c.id = o.customer_id JOIN products p ON p.id = o.product_id ORDER BY o.created_at
+    2026-10-20 23:44:26 LOG:  database system was not properly shut down; automatic recovery in progress
+    2026-10-20 23:45:26 LOG:  checkpoint starting: time
+    2026-10-20 23:46:26 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+    2026-10-21 00:01:26 LOG:  server process (PID 2547) was terminated by signal 9: Killed
+    2026-10-21 00:02:26 LOG:  database system was not properly shut down; automatic recovery in progress
+    2026-10-21 00:15:26 LOG:  checkpoint starting: time
+    2026-10-21 00:16:26 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+    2026-10-21 00:17:26 LOG:  server process (PID 2903) was terminated by signal 9: Killed
+    2026-10-21 00:18:26 LOG:  database system was not properly shut down; automatic recovery in progress
+    2026-10-21 00:18:26 LOG:  database system is ready to accept connections
+
+[TOOL CALL]
+    get_metrics({})
+
+[RESULT]
+    NAME    CPU %   MEM USAGE / LIMIT     MEM %
+    web     0.5     25MiB / 256MiB        10%
+    api     4.0     180MiB / 512MiB       35%
+    db      85.0    1003MiB / 1024MiB     98%
+    cache   0.8     60MiB / 256MiB        23%
+
+[TOOL CALL]
+    recent_changes({})
+
+[RESULT]
+    2026-10-20 23:40:26 (40 minutes ago) Deployed api 2.4.0 (new sales report page)
+    2026-10-18 00:20:26 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+    2026-10-12 00:20:26 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+[TOOL CALL]
+    search_web({"query": "PostgreSQL server closed the connection unexpectedly OOM killer"})
+
+[RESULT]
+    Web results for: PostgreSQL server closed the connection unexpectedly OOM killer
+    1. Fix: server closed the connection unexpectedly (Postgres) - FluentDB
+       https://www.fluentdb.ai/postgres-errors/server-closed-connection-unexpectedly
+       PostgreSQL errors PostgreSQL: server closed the connection unexpectedly ERRORSQLSTATE 08006connection_failure server closed the connection unexpectedly The connection dropped mid-request. The backend may have crashed (often the out-of-memory killer), been terminated by an admin or restart, or the socket was severed by a timeout or proxy. Check the server log for the real cause and add reconnect logic. By Kevin Piacentini, Software Engineer & Founder of FluentDB [...] The client cannot say. Read...
+    2. ERROR 57P01: Terminating Connection Due to Administrator Command in Postgres | PostgreSQL Error Reference
+       https://www.bytebase.com/reference/postgres/error/57p01-admin-shutdown-postgres
+       On Linux, if PostgreSQL backends consume too much memory, the kernel's OOM killer can terminate individual backend processes. The client sees 57P01; the PostgreSQL log may not even record it because the process was killed externally. [...] Server restart or maintenance window — the DBA or cloud platform restarted PostgreSQL `pg_terminate_backend()` called — another session explicitly killed your connection Idle connection timeout — `idle_in_transaction_session_timeout` or `idle_session_timeout`...
+    3. PostgreSQL Out Of Memory: OOM Killer, shared_buffers & work_mem
+       https://www.netdata.cloud/guides/postgres/postgres-out-of-memory
+       1. Confirm OOM vs ENOMEM. Check `dmesg`, `journalctl -k`, or container status for `OOMKilled`. PostgreSQL logs may show `FATAL: out of memory` or the connection may simply drop if SIGKILL arrived first. [...] # Confirm the Linux OOM killer fired # Confirm the Linux OOM killer fired # Confirm the Linux OOM killer fireddmesg -T | grep -i "killed process.postgres" dmesg -T | grep -i "killed process.postgres" "killed process.postgres" # Inspect PostgreSQL memory parameters # Inspect PostgreSQL memor...
+
+[REPORT (Super)]
+    
+    **What do users see?**  
+    The new sales‑report page returns an error and the whole shop becomes unavailable for about a minute each time the error occurs. The `/api/health` endpoint returns HTTP 503 while the home page (`/`) still returns 200.
+    
+    **Where is it broken?**  
+    - The `api` container is up but its logs show repeated `500` errors on `/api/reports/sales` with “server closed the connection unexpectedly”.  
+    - The `db` container’s logs show its backend processes being killed by signal 9 (SIGKILL) shortly after those API errors, followed by automatic recovery.  
+    - The `web` and `cache` containers are healthy.
+    
+    **What exactly is wrong?**  
+    - Memory usage of the `db` container is at **98 %** (1003 MiB / 1024 MiB) – essentially at its limit.  
+    - The kernel’s OOM killer is terminating PostgreSQL backend processes (signal 9) when they try to execute the heavy query from the new sales‑report endpoint.  
+    - When the DB backend disappears, the API sees the connection drop and returns 500/503 errors, making the shop appear down.
+    
+    **Why did it happen?**  
+    - At **2026‑10‑20 23:40:26** (≈40 minutes ago) the `api` service was deployed to version 2.4.0, which added the new sales‑report page.  
+    - The first OOM kill appears in the DB log at **2026‑10‑20 23:43:26**, just three minutes after the deploy, during the execution of the query `SELECT o.*, c.*, p.* FROM orders o …`.  
+    - The deploy introduced a query that consumes a large amount of memory (likely due to a missing `LIMIT` or inefficient joins), pushing the DB’s memory usage to its limit and triggering the OOM killer.  
+    - Each time the report is requested, the DB backend is killed, causing the API to lose its DB connection and return errors; the DB then restarts, leading to the observed minute‑long outage.
+    
+    **How to fix it?**  
+    - **Quick fix:** Roll back the `api` container to the previous version (2.3.1) or temporarily disable the new `/api/reports/sales` endpoint (e.g., by removing the route or scaling the API to 0 replicas). This stops the heavy query from being executed, allowing the DB to stay under its memory limit. Verify the fix by checking that `GET /api/health` returns 200 and that no further OOM kills appear in `db` logs.  
+    - **Long‑term fix:** Optimize the sales‑report query (add appropriate `WHERE` clauses, `LIMIT`, or pagination), review and adjust PostgreSQL memory settings (`shared_buffers`, `work_mem`), or increase the memory limit/reservation for the `db` container. Additionally, set up monitoring/alerts for container memory usage to catch similar issues early.
+    
+    **Sources**  
+    - https://www.fluentdb.ai/postgres-errors/server-closed-connection-unexpectedly  
+    - https://www.bytebase.com/reference/postgres/error/57p01-admin-shutdown-postgres  
+    - https://www.netdata.cloud/guides/postgres/postgres-out-of-memory  
+    
+    ---  
+    ROOT CAUSE: The new API version 2.4.0 introduced a memory‑intensive sales‑report query that pushes the PostgreSQL container to its memory limit, causing the OOM killer to terminate DB backends, which in turn makes the API lose its DB connection and return errors to users.  
+    EVIDENCE:  
+    - `api` logs show `ERROR GET /api/reports/sales 500: server closed the connection unexpectedly` coinciding with DB OOM kills.  
+    - `db` logs show `server process (PID xxxx) was terminated by signal 9: Killed` during the same query.  
+    - `get_metrics` reports DB memory usage at 98 % (1003MiB/1024MiB).  
+    - `recent_changes` shows the `api` 2.4.0 deploy 40 minutes before the first OOM kill.  
+    FIX: Roll back `api` to version 2.3.1 (or disable the new report endpoint) to stop the heavy query; verify health endpoint returns 200 and no further OOM kills. Long‑term: optimize the query, adjust PostgreSQL memory settings, or increase DB container memory limit.  
+    SOURCES:  
+    https://www.fluentdb.ai/postgres-errors/server-closed-connection-unexpectedly  
+    https://www.bytebase.com/reference/postgres/error/57p01-admin-shutdown-postgres  
+    https://www.netdata.cloud/guides/postgres/postgres-out-of-memory
+
+[FINAL CALL (Ultra)]
+    ROOT CAUSE (high confidence, agrees with the investigator):
+      The API version 2.4.0 introduced a sales-report query that joins orders, customers, and products without limits, consuming ~1000 MiB and pushing the PostgreSQL container to 98% of its 1024 MiB limit. The kernel OOM killer then terminates PostgreSQL backend processes (signal 9), causing the API to lose its DB connection and return 500/503 errors.
+    
+    EVIDENCE:
+      - db memory usage 1003 MiB / 1024 MiB (98%) from get_metrics
+      - db logs show 'server process (PID 2211) was terminated by signal 9: Killed' while running the heavy query
+      - api logs show repeated 'ERROR GET /api/reports/sales 500: server closed the connection unexpectedly'
+      - recent_changes shows api 2.4.0 deployed 40 minutes before first OOM kill
+    
+    OPTION 1: Rollback API to 2.3.1  <- RECOMMENDED
+      steps:
+        1. rollback(container=api, to_image=shopapp/api:2.3.1)
+      pros:   Immediately stops the memory-intensive query; Removes the root cause completely; DB stays under memory limit, no more OOM kills
+      cons:   New sales-report feature becomes unavailable
+      undo:   Rollback api to shopapp/api:2.4.0
+      can be undone: yes | risk: low
+    
+    OPTION 2: Increase DB memory limit to 2048 MiB
+      steps:
+        1. set_memory_limit(container=db, memory_mb=2048)
+      pros:   Keeps the new sales-report feature live; Gives the query more headroom (server has 8192 MiB total)
+      cons:   Does not fix the inefficient query; OOM may still occur if query grows; Consumes more of the server's memory (total container limits would rise to ~3072 MiB); Only buys time; root cause remains
+      undo:   Set db memory limit back to 1024 MiB
+      can be undone: yes | risk: medium
+    
+    OPTION 3: Rollback API and increase DB memory limit
+      steps:
+        1. rollback(container=api, to_image=shopapp/api:2.3.1)
+        2. set_memory_limit(container=db, memory_mb=2048)
+      pros:   Removes root cause immediately; Adds extra memory buffer for future queries
+      cons:   New sales-report feature unavailable; Uses more server memory than necessary after rollback
+      undo:   Rollback api to 2.4.0 and set db memory limit to 1024 MiB
+      can be undone: yes | risk: low
+    
+    WHY: Rolling back the API to 2.3.1 instantly stops the heavy query, lets the DB stay under its memory limit, and prevents OOM kills, ending the user impact while fully removing the root cause with minimal risk.
+    
+    SOURCES:
+      https://www.fluentdb.ai/postgres-errors/server-closed-connection-unexpectedly
+      https://www.bytebase.com/reference/postgres/error/57p01-admin-shutdown-postgres
+      https://www.netdata.cloud/guides/postgres/postgres-out-of-memory
+
+[SAFETY CHECK]
+    All 3 options passed the safety check.
+
+======================================================================
+HIDDEN TRUTH (the agent never saw this):
+    Root cause: api 2.4.0 added a sales report query that makes PostgreSQL use more than its 1 GB memory limit, so it is killed (out of memory, signal 9) and keeps restarting.
+    Fix:        Roll back api to 2.3.1 (or turn off the report page), then check the database stays up. Long term: fix the report query or give the database more memory.
+
+COST: 11 model calls, 24.2 s, 25,544 tokens in, 4,431 out

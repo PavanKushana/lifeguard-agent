@@ -27,6 +27,9 @@ LABELS = {
     "tool_call": "TOOL CALL",
     "tool_result": "RESULT",
     "report": "REPORT (Super)",
+    "final_call": "FINAL CALL (Ultra)",
+    "safety": "SAFETY CHECK",
+    "rule": "RULE CHECK",
 }
 
 # Every run is saved here, one file per run, never overwritten.
