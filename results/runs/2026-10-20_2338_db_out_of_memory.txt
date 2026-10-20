@@ -1,0 +1,132 @@
+Run: db_out_of_memory at 2026-10-20 23:38
+Models: triage=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B, investigator=nvidia/nemotron-3-super-120b-a12b, final_call=nvidia/Nemotron-3-Ultra-550b-a55b
+
+ALERT: The new sales report page shows an error, and the whole shop keeps going down for a minute.
+
+[TRIAGE (Nano)]
+    {
+      "severity": "high",
+      "category": "deploy",
+      "first_guess": "A recent deployment likely introduced a bug that crashes the web service, causing brief outages.",
+      "check_first": "Review the web container's deployment logs and recent release notes to identify any failing container."
+    }
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/"})
+
+[RESULT]
+    HTTP 200 in 40 ms
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/api/health"})
+
+[RESULT]
+    HTTP 503 in 12 ms
+
+[TOOL CALL]
+    list_containers({})
+
+[RESULT]
+    NAME    IMAGE               RESTARTS  STATUS
+    web     nginx:1.27          0         Up 12 days
+    api     shopapp/api:2.4.0   0         Up 40 minutes
+    db      postgres:16         3         Up 2 minutes
+    cache   redis:7.4           0         Up 9 days
+
+[TOOL CALL]
+    recent_changes({})
+
+[RESULT]
+    2026-10-20 22:58:00 (40 minutes ago) Deployed api 2.4.0 (new sales report page)
+    2026-10-17 23:38:00 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+    2026-10-11 23:38:00 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+[TOOL CALL]
+    get_logs({"container": "api", "lines": 30})
+
+[RESULT]
+    2026-10-17 23:38:00 INFO Connected to database db:5432
+    2026-10-17 23:38:00 INFO Connected to cache cache:6379
+    2026-10-20 22:43:00 INFO GET /api/products 200 in 42ms
+    2026-10-20 22:57:00 INFO GET /api/products 200 in 42ms
+    2026-10-20 22:58:00 INFO Starting shopapp api 2.4.0
+    2026-10-20 23:01:00 ERROR GET /api/reports/sales 500: server closed the connection unexpectedly
+    2026-10-20 23:08:00 INFO GET /api/products 200 in 42ms
+    2026-10-20 23:19:00 ERROR GET /api/reports/sales 500: server closed the connection unexpectedly
+    2026-10-20 23:20:00 INFO GET /api/products 200 in 42ms
+    2026-10-20 23:20:00 ERROR GET /api/products 503: connection to db:5432 refused
+    2026-10-20 23:32:00 INFO GET /api/products 200 in 42ms
+    2026-10-20 23:35:00 ERROR GET /api/reports/sales 500: server closed the connection unexpectedly
+    2026-10-20 23:36:00 INFO GET /api/products 200 in 42ms
+    2026-10-20 23:36:00 ERROR GET /api/products 503: connection to db:5432 refused
+
+[TOOL CALL]
+    get_logs({"container": "db", "lines": 30})
+
+[RESULT]
+    2026-10-08 23:38:00 LOG:  database system is ready to accept connections
+    2026-10-20 23:01:00 LOG:  server process (PID 2211) was terminated by signal 9: Killed
+    2026-10-20 23:01:00 DETAIL:  Failed process was running: SELECT o.*, c.*, p.* FROM orders o JOIN customers c ON c.id = o.customer_id JOIN products p ON p.id = o.product_id ORDER BY o.created_at
+    2026-10-20 23:02:00 LOG:  database system was not properly shut down; automatic recovery in progress
+    2026-10-20 23:03:00 LOG:  checkpoint starting: time
+    2026-10-20 23:04:00 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+    2026-10-20 23:19:00 LOG:  server process (PID 2547) was terminated by signal 9: Killed
+    2026-10-20 23:20:00 LOG:  database system was not properly shut down; automatic recovery in progress
+    2026-10-20 23:33:00 LOG:  checkpoint starting: time
+    2026-10-20 23:34:00 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+    2026-10-20 23:35:00 LOG:  server process (PID 2903) was terminated by signal 9: Killed
+    2026-10-20 23:36:00 LOG:  database system was not properly shut down; automatic recovery in progress
+    2026-10-20 23:36:00 LOG:  database system is ready to accept connections
+
+[TOOL CALL]
+    get_metrics({})
+
+[RESULT]
+    NAME    CPU %   MEM USAGE / LIMIT     MEM %
+    web     0.5     25MiB / 256MiB        10%
+    api     4.0     180MiB / 512MiB       35%
+    db      85.0    1003MiB / 1024MiB     98%
+    cache   0.8     60MiB / 256MiB        23%
+
+[TOOL CALL]
+    search_web({"query": "PostgreSQL server process terminated by signal 9 Killed"})
+
+[RESULT]
+    Web results for: PostgreSQL server process terminated by signal 9 Killed
+    1. postgres process killed with killed -9 command (look like it is bug) · Issue #396 · sclorg/postgresql-container · GitHub
+       https://github.com/sclorg/postgresql-container/issues/396
+       LOG: server process (PID 24643) was terminated by signal 9: Killed LOG: terminating any other active server processes WARNING: terminating connection because of crash of another server process DETAIL: The postmaster has commanded this server process to roll back the current transaction and exit, because another server process exited abnormally and possibly corrupted shared memory. HINT: In a moment you should be able to reconnect to the database and repeat your command. LOG: all server [...] 202...
+    2. Обсуждение: PosgreSQL backend process crashed with signal 9 : Компания Postgres Professional
+       https://postgrespro.ru/list/thread-id/1236676
+       Pavel Suderevsky writes: > I've faced similar behaviour in much more simple situation. It crashed on > simple nested loop. And all other child postmaster processes were > terminated likewise. >> 2016-04-05 18:37:31 MSK LOG: server process (PID 2848) was terminated by >> signal 9: Killed Well, signal 9 is not an internal-to-Postgres error; that's something outside the database killing the process. If you're on a Linux machine it's most likely the dreaded OOM killer doing it. The usual [...] MSK L...
+    3. S5: Out of memory · pganalyze
+       https://pganalyze.com/docs/log-insights/server/S5
+       LOG: server process (PID 123) was terminated by signal 9: Killed Explanation: This low-level out-of-memory (OOM) error occurs when Postgres is unable to allocate the memory required for a query to run, or any other internal operation to complete.
+
+[REPORT (Super)]
+    
+    
+    ROOT CAUSE: The deployment of api version 2.4.0 added a heavy sales‑report query that caused the PostgreSQL container to exhaust its memory limit (≈98% usage), triggering the OOM killer (signal 9) and repeatedly restarting the DB, which in turn produced 503/500 errors for users.
+    
+    EVIDENCE:
+    - The API health endpoint returns HTTP 503 while the home page returns HTTP 200, indicating the API/DB layer is failing.  
+    - The `api` container logs show repeated “server closed the connection unexpectedly” and “connection to db:5432 refused” errors starting at 2026‑10‑20 23:01, coinciding with the deployment timestamp.  
+    - The `db` container logs show multiple instances of “server process … was terminated by signal 9: Killed” followed by automatic recovery, exactly matching the times of the API errors.  
+    - `get_metrics` shows the DB using 1003 MiB of a 1024 MiB limit (98% memory usage), indicating it is near the OOM threshold.  
+    - `recent_changes` confirms the api 2.4.0 deployment (new sales report page) occurred 40 minutes ago, aligning with the container’s uptime and the onset of errors.
+    
+    FIX:
+    - Quick fix: Roll back the api container to the previous version (2.3.1) to remove the heavy query, which will stop the DB memory spikes and allow the DB to stay up. Verify by checking that `api` logs no longer contain DB connection errors and that the health endpoint returns HTTP 200.  
+    - Long‑term fix: Increase the memory limit for the PostgreSQL container (or optimize the sales‑report query/indexes) to accommodate the workload, and monitor memory usage to prevent future OOM kills.
+    
+    SOURCES:
+    https://github.com/sclorg/postgresql-container/issues/396
+    https://postgrespro.ru/list/thread-id/1236676
+    https://pganalyze.com/docs/log-insights/server/S5
+
+======================================================================
+HIDDEN TRUTH (the agent never saw this):
+    Root cause: api 2.4.0 added a sales report query that makes PostgreSQL use more than its 1 GB memory limit, so it is killed (out of memory, signal 9) and keeps restarting.
+    Fix:        Roll back api to 2.3.1 (or turn off the report page), then check the database stays up. Long term: fix the report query or give the database more memory.
+
+COST: 10 model calls, 13.1 s, 21,238 tokens in, 1,195 out

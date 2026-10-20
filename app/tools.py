@@ -6,6 +6,7 @@ Each tool reads the Server from simulator.py and returns plain text, exactly wha
 an engineer would see in a terminal. The agent never knows the server is fake:
 to support a real server later, only this file needs a second version.
 Every tool here only READS. Nothing in this file changes the server.
+One tool, search_web, looks things up on the internet instead (code in web_search.py).
 
 At the bottom: the tool menu the model reads (TOOL_SCHEMAS) and run_tool(),
 which runs whatever the model asks for, safely.
@@ -15,6 +16,7 @@ import json
 from datetime import datetime
 
 from app.simulator import Server
+from app.web_search import search_web
 
 
 def time_since(moment: datetime) -> str:
@@ -94,6 +96,11 @@ def check_endpoint(server: Server, url: str) -> str:
     return f"HTTP {result['status']} in {result['ms']} ms"
 
 
+def web_search_tool(server: Server, query: str) -> str:
+    """Look up an error on the internet. The server isn't used: the web is the same for every server."""
+    return search_web(query)
+
+
 # The 4 containers in simulator.py, listed so the model can only pick a real one.
 CONTAINER_NAMES = ["web", "api", "db", "cache"]
 
@@ -113,7 +120,7 @@ def _tool(name: str, description: str, properties: dict | None = None,
 
 
 # The tool menu the model reads. It only sees these names and descriptions, never the code above.
-# All of them only read; fixes come later and always need a human's approval.
+# None of them change anything; fixes come later and always need a human's approval.
 TOOL_SCHEMAS = [
     _tool("list_containers", "Like 'docker ps -a': every container with its image, restart count and status."),
     _tool("get_logs", "Like 'docker logs --tail N': the newest log lines of one container, with timestamps.",
@@ -127,6 +134,11 @@ TOOL_SCHEMAS = [
           {"url": {"type": "string",
                    "enum": ["http://localhost/", "http://localhost/api/health"]}},
           required=["url"]),
+    _tool("search_web", "Search the internet for an error message. Returns the top 3 pages with title, "
+          "link and a short text. Search the error text without details that only exist on this server "
+          "(timestamps, process IDs, file numbers, user names).",
+          {"query": {"type": "string", "description": "The error message or question to search for."}},
+          required=["query"]),
 ]
 
 # Tool name -> the function that runs it. Only names in here can ever run.
@@ -137,6 +149,7 @@ _FUNCTIONS = {
     "check_disk": check_disk,
     "recent_changes": recent_changes,
     "check_endpoint": check_endpoint,
+    "search_web": web_search_tool,
 }
 
 
