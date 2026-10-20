@@ -6,8 +6,12 @@ Each tool reads the Server from simulator.py and returns plain text, exactly wha
 an engineer would see in a terminal. The agent never knows the server is fake:
 to support a real server later, only this file needs a second version.
 Every tool here only READS. Nothing in this file changes the server.
+
+At the bottom: the tool menu the model reads (TOOL_SCHEMAS) and run_tool(),
+which runs whatever the model asks for, safely.
 """
 
+import json
 from datetime import datetime
 
 from app.simulator import Server
@@ -88,3 +92,67 @@ def check_endpoint(server: Server, url: str) -> str:
     if result["status"] == 0:
         return f"curl: (7) Failed to connect to {url}: Connection refused"
     return f"HTTP {result['status']} in {result['ms']} ms"
+
+
+# The 4 containers in simulator.py, listed so the model can only pick a real one.
+CONTAINER_NAMES = ["web", "api", "db", "cache"]
+
+
+def _tool(name: str, description: str, properties: dict | None = None,
+          required: list | None = None) -> dict:
+    """Build one menu entry in the format the OpenAI-style API expects."""
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": {"type": "object", "properties": properties or {},
+                           "required": required or []},
+        },
+    }
+
+
+# The tool menu the model reads. It only sees these names and descriptions, never the code above.
+# All of them only read; fixes come later and always need a human's approval.
+TOOL_SCHEMAS = [
+    _tool("list_containers", "Like 'docker ps -a': every container with its image, restart count and status."),
+    _tool("get_logs", "Like 'docker logs --tail N': the newest log lines of one container, with timestamps.",
+          {"container": {"type": "string", "enum": CONTAINER_NAMES},
+           "lines": {"type": "integer", "description": "How many of the newest lines (default 20, max 50)."}},
+          required=["container"]),
+    _tool("get_metrics", "Like 'docker stats': CPU and memory use of every container, with memory limits."),
+    _tool("check_disk", "Like 'df -h': size, used and free space of every disk."),
+    _tool("recent_changes", "Deploys and config changes on this server, newest first, with times."),
+    _tool("check_endpoint", "Like 'curl': call a URL and get the HTTP status and response time.",
+          {"url": {"type": "string",
+                   "enum": ["http://localhost/", "http://localhost/api/health"]}},
+          required=["url"]),
+]
+
+# Tool name -> the function that runs it. Only names in here can ever run.
+_FUNCTIONS = {
+    "list_containers": list_containers,
+    "get_logs": get_logs,
+    "get_metrics": get_metrics,
+    "check_disk": check_disk,
+    "recent_changes": recent_changes,
+    "check_endpoint": check_endpoint,
+}
+
+
+def run_tool(server: Server, name: str, arguments: str) -> str:
+    """Run one tool the model asked for and return its output as text.
+
+    Anything unexpected (unknown tool, broken arguments) comes back as an error message
+    the model can read and correct, instead of crashing the agent.
+    """
+    if name not in _FUNCTIONS:
+        return f"Error: unknown tool '{name}'. Available tools: {', '.join(_FUNCTIONS)}"
+    try:
+        args = json.loads(arguments or "{}")
+        if name == "get_logs":
+            # Keep the answer short enough for the model: between 1 and 50 lines.
+            args["lines"] = max(1, min(int(args.get("lines", 20)), 50))
+        return _FUNCTIONS[name](server, **args)
+    except (json.JSONDecodeError, TypeError, ValueError) as error:
+        return f"Error: bad arguments for {name}: {error}"

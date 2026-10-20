@@ -1,0 +1,111 @@
+Run: disk_full at 2026-10-20 16:31
+Models: triage=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B, investigator=nvidia/nemotron-3-super-120b-a12b, final_call=nvidia/Nemotron-3-Ultra-550b-a55b
+
+ALERT: Customers can browse the shop, but placing an order fails with 'Something went wrong'.
+
+[TRIAGE (Nano)]
+    {
+      "severity": "high",
+      "category": "config",
+      "first_guess": "The Python API is likely failing to process orders, possibly due to a runtime error or misconfiguration.",
+      "check_first": "api"
+    }
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/"})
+
+[RESULT]
+    HTTP 200 in 40 ms
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/api/health"})
+
+[RESULT]
+    HTTP 200 in 65 ms
+
+[TOOL CALL]
+    list_containers({})
+
+[RESULT]
+    NAME    IMAGE               RESTARTS  STATUS
+    web     nginx:1.27          0         Up 12 days
+    api     shopapp/api:2.3.1   0         Up 3 days
+    db      postgres:16         0         Up 12 days
+    cache   redis:7.4           0         Up 9 days
+
+[TOOL CALL]
+    get_metrics({})
+
+[RESULT]
+    NAME    CPU %   MEM USAGE / LIMIT     MEM %
+    web     0.5     25MiB / 256MiB        10%
+    api     4.0     180MiB / 512MiB       35%
+    db      3.0     320MiB / 1024MiB      31%
+    cache   0.8     60MiB / 256MiB        23%
+
+[TOOL CALL]
+    check_disk({})
+
+[RESULT]
+    Mounted on            Size    Used    Avail   Use%
+    /                     30.0G   11.2G   18.8G   37%
+    /var/lib/postgresql   50.0G   50.0G   0.0G    100%
+
+[TOOL CALL]
+    recent_changes({})
+
+[RESULT]
+    2026-10-18 16:31:28 (2 days ago) Added nightly database backup job (pg_dump to /var/lib/postgresql/backups)
+    2026-10-17 16:31:28 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+    2026-10-11 16:31:28 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+[TOOL CALL]
+    get_logs({"container": "db", "lines": 30})
+
+[RESULT]
+    2026-10-08 16:31:28 LOG:  database system is ready to accept connections
+    2026-10-20 15:56:28 LOG:  checkpoint starting: time
+    2026-10-20 15:57:28 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+    2026-10-20 16:17:28 ERROR:  could not extend file "base/16384/24576": No space left on device
+    2026-10-20 16:17:28 HINT:  Check free disk space.
+    2026-10-20 16:25:28 ERROR:  could not write to file "pg_wal/xlogtemp.123": No space left on device
+    2026-10-20 16:26:28 LOG:  checkpoint starting: time
+    2026-10-20 16:27:28 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+    2026-10-20 16:29:28 ERROR:  could not extend file "base/16384/24576": No space left on device
+
+[TOOL CALL]
+    get_logs({"container": "api", "lines": 30})
+
+[RESULT]
+    2026-10-17 16:31:28 INFO Connected to database db:5432
+    2026-10-17 16:31:28 INFO Connected to cache cache:6379
+    2026-10-20 15:36:28 INFO GET /api/products 200 in 42ms
+    2026-10-20 15:50:28 INFO GET /api/products 200 in 42ms
+    2026-10-20 16:01:28 INFO GET /api/products 200 in 42ms
+    2026-10-20 16:13:28 INFO GET /api/products 200 in 42ms
+    2026-10-20 16:17:28 ERROR POST /api/orders 500: database error, see database logs
+    2026-10-20 16:25:28 INFO GET /api/products 200 in 42ms
+    2026-10-20 16:25:28 ERROR POST /api/orders 500: database error, see database logs
+    2026-10-20 16:29:28 INFO GET /api/products 200 in 42ms
+    2026-10-20 16:29:28 ERROR POST /api/orders 500: database error, see database logs
+
+[REPORT (Super)]
+    
+    ROOT CAUSE: The nightly database backup job added two days ago is writing to the same PostgreSQL data volume, which has filled the disk to 100%, preventing PostgreSQL from extending files and causing write failures that propagate to the API when processing orders.
+    
+    EVIDENCE:
+    - Disk check shows `/var/lib/postgresql` at 100% used (`Size 50.0G, Used 50.0G, Avail 0.0G, Use% 100%`).
+    - PostgreSQL logs contain repeated `ERROR: could not extend file …: No space left on device` starting at `2026-10-20 16:17:28`.
+    - Recent changes log shows the backup job was added on `2026-10-18 16:31:28` (two days before the first error).
+    - API logs show `ERROR POST /api/orders 500: database error, see database logs` at the same times as the PostgreSQL errors (`2026-10-20 16:17:28`, `16:25:28`, `16:29:28`).
+    
+    FIX:
+    - Quick fix: Disable or temporarily redirect the backup job (e.g., move the backup script or change its target directory to another volume) and free space by moving existing backup files elsewhere; then verify that PostgreSQL can write again by checking that subsequent `POST /api/orders` requests succeed (API logs should no longer show database errors).
+    - Long‑term fix: Monitor `/var/lib/postgresql` usage with alerts, configure the backup job to write to a separate disk or increase its retention policy, and consider enlarging the PostgreSQL volume or implementing automated cleanup of old backups.
+
+======================================================================
+HIDDEN TRUTH (the agent never saw this):
+    Root cause: The disk /var/lib/postgresql is 100% full because the new nightly backup job saves its dumps on the same disk, so PostgreSQL cannot write new data.
+    Fix:        Move or delete old backup files in /var/lib/postgresql/backups to free space, then check that orders work again. Long term: store backups on another disk.
+
+COST: 10 model calls, 19.3 s, 16,536 tokens in, 1,266 out
