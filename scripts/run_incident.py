@@ -1,6 +1,7 @@
 """
 run_incident.py
 Break the fake server with a preset fault and watch the agent investigate it, step by step.
+At the end you pick one of Ultra's fix options and approve it, or reject them all.
 
 Run from the project folder:
     python -m scripts.run_incident disk_full
@@ -11,11 +12,13 @@ whether it found the real cause. (An automatic grader comes on Day 10.)
 Every run is also saved to results/runs/, so anyone can check what the agent really did.
 """
 
+import getpass
 import sys
 from datetime import datetime
 from pathlib import Path
 
 from app.agent import handle_incident
+from app.approval import approve_option
 from app.faults import PRESETS, apply_fault
 from app.llm import MODELS
 from app.simulator import Server
@@ -66,6 +69,52 @@ def save_run(fault_name: str, started: datetime) -> Path:
     return path
 
 
+def ask_number(question: str, highest: int) -> int:
+    """Ask until the answer is a whole number from 0 to `highest`."""
+    while True:
+        answer = input(question).strip()
+        if answer.isdigit() and 0 <= int(answer) <= highest:
+            return int(answer)
+        print(f"    Please type a number from 0 to {highest}.")
+
+
+def ask_human(server: Server, final: dict | None) -> dict | None:
+    """Let the person at the terminal pick a fix option and approve it. Returns the decision, or None."""
+    if not final or not final.get("options"):
+        say("\nNo safe fix options to choose from. A human has to decide what to do.")
+        return None
+
+    options = final["options"]
+    say("\n" + "=" * 70)
+    say("YOUR DECISION")
+    for number, option in enumerate(options, start=1):
+        star = " (recommended)" if option.get("recommended") else ""
+        say(f"    {number}. {option.get('title')}{star}")
+    say("    0. Reject all, change nothing")
+
+    # 0 is the way out, not a fix, so the question names it separately.
+    choices = "1" if len(options) == 1 else f"1-{len(options)}"
+    number = ask_number(f"\nPick an option ({choices}), or 0 to reject all: ", len(options))
+    say(f"Picked: {number}")
+    if number:
+        say("Steps that will run:")
+        for step_number, step in enumerate(options[number - 1]["steps"], start=1):
+            details = ", ".join(f"{key}={value}" for key, value in step.items() if key != "type")
+            say(f"    {step_number}. {step.get('type')}({details})")
+        # A second, explicit yes: picking alone is not approving.
+        if input("Apply these steps? (y/n): ").strip().lower() != "y":
+            say("Answer: no")
+            number = 0
+        else:
+            say("Answer: yes")
+
+    decision = approve_option(server, final, number, approved_by=getpass.getuser())
+    say(f"\nDECISION: {decision['note']} (by {decision['by']} at {decision['at']})")
+    if decision["approved"]:
+        say("(Applying the fix to the server comes in the next step.)")
+    return decision
+
+
 def main() -> None:
     """Break the server with the chosen fault, run the agent, then compare with the hidden truth."""
     if len(sys.argv) < 2 or sys.argv[1] not in PRESETS:
@@ -79,6 +128,7 @@ def main() -> None:
     say(f"ALERT: {fault['alert']}")
 
     result = handle_incident(server, fault["alert"], print_step)
+    ask_human(server, result["final"])
 
     say("\n" + "=" * 70)
     say("HIDDEN TRUTH (the agent never saw this):")
