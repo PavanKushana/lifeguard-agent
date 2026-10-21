@@ -324,9 +324,13 @@ def format_final_call(result: dict) -> str:
 
 
 def handle_incident(server: Server, alert: str, on_step) -> dict:
-    """Run one full incident: triage, investigation, final call. Returns the results and the usage totals."""
+    """Run one full incident: triage, investigation, final call.
+
+    Returns the results, the evidence (every tool call with its output, for the postmortem)
+    and the usage totals.
+    """
     usage = Usage()
     first_look = triage(alert, usage, on_step)
     report, evidence = investigate(server, alert, first_look, usage, on_step)
     final = final_call(server, alert, report, evidence, usage, on_step)
-    return {"triage": first_look, "report": report, "final": final, "usage": usage}
+    return {"triage": first_look, "report": report, "final": final, "evidence": evidence, "usage": usage}

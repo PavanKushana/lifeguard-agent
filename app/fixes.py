@@ -22,6 +22,9 @@ from app.simulator import Server, minutes_ago
 # Moved files go into this folder on the target disk, so it's easy to see what a fix moved.
 MOVED_FOLDER = "moved-files"
 
+# A disk this full is a warning sign: many teams alert at 85%.
+NEARLY_FULL = 0.85
+
 
 def move_files(server: Server, from_path: str, to_mount: str) -> str:
     """Move a file or folder to another disk: the files get a new path and their size changes disks."""
@@ -129,9 +132,13 @@ def holds(server: Server, group: dict) -> tuple[bool, list[str]]:
 def verify(server: Server, fault: dict) -> dict:
     """Check if the fix worked, and let the server recover if users are OK again.
 
-    Returns {"verdict": "FIXED" / "FIXED FOR NOW" / "NOT FIXED", "users_ok": [...], "stays_fixed": [...]}
-    where the lists are the checked lines, for the human to read.
+    Returns {"verdict": "FIXED" / "FIXED FOR NOW" / "NOT FIXED", "users_ok": [...], "stays_fixed": [...],
+    "warnings": [...]} where the lists are lines for the human to read.
     """
+    # A fix can move a problem instead of ending it (moving files fills the other disk),
+    # so every disk is checked, not only the one the fault was about.
+    warnings = [f"{d.mount} is {d.used_gb / d.size_gb:.0%} full now ({d.size_gb - d.used_gb:.1f} GB free)"
+                for d in server.disks.values() if d.used_gb / d.size_gb >= NEARLY_FULL]
     rules = fault["fixed_when"]
     users_ok, users_lines = holds(server, rules["users_ok"])
     stays_fixed, stays_lines = holds(server, rules["stays_fixed"])
@@ -146,4 +153,4 @@ def verify(server: Server, fault: dict) -> dict:
         verdict = "FIXED FOR NOW"
     else:
         verdict = "NOT FIXED"
-    return {"verdict": verdict, "users_ok": users_lines, "stays_fixed": stays_lines}
+    return {"verdict": verdict, "users_ok": users_lines, "stays_fixed": stays_lines, "warnings": warnings}

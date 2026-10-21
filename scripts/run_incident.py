@@ -3,6 +3,7 @@ run_incident.py
 Break the fake server with a preset fault and watch the agent investigate it, step by step.
 At the end you pick one of Ultra's fix options and approve it, or reject them all.
 An approved fix is applied to the fake server, which is then checked: FIXED, FIXED FOR NOW or NOT FIXED.
+Last, a postmortem (what happened, why, what fixed it, what's next) is saved to results/incidents/.
 
 Run from the project folder:
     python -m scripts.run_incident disk_full
@@ -24,6 +25,7 @@ from app.approval import approve_option
 from app.faults import PRESETS, apply_fault
 from app.fixes import apply_fix, verify
 from app.llm import MODELS
+from app.postmortem import build_postmortem, save_postmortem
 from app.simulator import Server
 
 # How each kind of step is labelled in the timeline.
@@ -38,7 +40,7 @@ LABELS = {
     "rule": "RULE CHECK",
     "apply": "APPLYING THE FIX",
     "after": "AFTER THE FIX",
-    "verdict": "RESULT",
+    "verdict": "VERDICT",  # not "RESULT": every tool output is already labelled RESULT
 }
 
 # Every run is saved here, one file per run, never overwritten.
@@ -46,6 +48,9 @@ RUNS_DIR = Path("results") / "runs"
 
 # Lines of this run, collected so they can be saved to a file at the end.
 transcript = []
+
+# When each kind of step first happened ("report", "final_call", ...), for the postmortem's timeline.
+step_times = {}
 
 
 def say(text: str = "") -> None:
@@ -56,6 +61,7 @@ def say(text: str = "") -> None:
 
 def print_step(kind: str, text: str) -> None:
     """Print one step of the investigation as it happens, like a live timeline."""
+    step_times.setdefault(kind, datetime.now())
     say(f"\n[{LABELS.get(kind, kind)}]")
     # Indent the text so the labels stand out and the timeline is easy to scan.
     for line in text.splitlines():
@@ -119,13 +125,16 @@ def ask_human(server: Server, final: dict | None) -> dict | None:
     return decision
 
 
-def fix_and_verify(server: Server, fault: dict, decision: dict | None) -> None:
+def fix_and_verify(server: Server, fault: dict, decision: dict | None) -> tuple[list, dict]:
     """Apply the approved fix (if any), show the server afterwards, then always give the verdict.
+
+    Returns (the steps that ran, the verification result), for the postmortem.
 
     A rejected fix gets a verdict too: nothing changed, so the problem is still there (NOT FIXED).
     The grader on Day 10 needs a verdict for every run, whatever the human decided.
     """
     approved = bool(decision and decision["approved"])
+    done = []
     if approved:
         done = apply_fix(server, decision)
         print_step("apply", "\n".join(f"{number}. {line}" for number, line in enumerate(done, start=1)))
@@ -149,7 +158,10 @@ def fix_and_verify(server: Server, fault: dict, decision: dict | None) -> None:
         lines.append("No fix was approved, so nothing was changed.")
     lines += ["", "Users OK?"] + [f"  {line}" for line in result["users_ok"]]
     lines += ["Stays fixed?"] + [f"  {line}" for line in result["stays_fixed"]]
+    if result["warnings"]:
+        lines += ["Watch out:"] + [f"  {line}" for line in result["warnings"]]
     print_step("verdict", "\n".join(lines))
+    return done, result
 
 
 def main() -> None:
@@ -166,7 +178,12 @@ def main() -> None:
 
     result = handle_incident(server, fault["alert"], print_step)
     decision = ask_human(server, result["final"])
-    fix_and_verify(server, fault, decision)
+    done, verification = fix_and_verify(server, fault, decision)
+
+    # Written from what was recorded above only; the hidden truth below is never in it.
+    postmortem = build_postmortem({**result, "alert": fault["alert"], "started": started, "times": step_times,
+                                   "decision": decision, "done": done, "verification": verification})
+    postmortem_path = save_postmortem(postmortem, sys.argv[1], started)
 
     say("\n" + "=" * 70)
     say("HIDDEN TRUTH (the agent never saw this):")
@@ -175,6 +192,7 @@ def main() -> None:
     say(f"\nCOST: {result['usage'].summary()}")
     # Plain print, so this line is not inside the saved file itself.
     print(f"\nSaved to {save_run(sys.argv[1], started)}")
+    print(f"Postmortem: {postmortem_path}")
 
 
 if __name__ == "__main__":
