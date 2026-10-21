@@ -5,7 +5,7 @@ Ways to break the fake server, written as data instead of code.
 Every fault has three parts:
 - alert:   what a user or monitor reports. This is the ONLY part the agent sees.
 - truth:   the real cause and fix. Hidden from the agent; the grader uses it later.
-- changes: what to change in the Server (disks, containers, logs, health checks, deploys).
+- changes: what to change in the Server (disks, files, jobs, containers, logs, health checks, deploys).
 
 Because a fault is plain data, the presets below and the custom faults that
 Ultra writes from a user's text (Day 6) use exactly the same format.
@@ -24,11 +24,23 @@ DISK_FULL = {
         "category": "disk",
         "root_cause": "The disk /var/lib/postgresql is 100% full because the new nightly backup "
                       "job saves its dumps on the same disk, so PostgreSQL cannot write new data.",
-        "fix": "Move or delete old backup files in /var/lib/postgresql/backups to free space, "
+        "fix": "Move the older backup file from /var/lib/postgresql/backups to another disk to free space "
+               "(both dumps together don't fit on /), stop the backup job from filling the disk again, "
                "then check that orders work again. Long term: store backups on another disk.",
     },
     "changes": {
+        # 18.4 GB of data + 2 dumps of 15.8 GB = 50.0 GB, the whole disk.
         "disks": {"/var/lib/postgresql": {"used_gb": 50.0}},
+        # [path, size in GB, minutes ago]. "{date}" becomes the file's date, like real backup names.
+        # The job was added 2 days ago and runs daily, so it has made 2 dumps so far.
+        "files": [
+            ["/var/lib/postgresql/backups/shop_{date}.dump", 15.8, DAY + 13 * 60],
+            ["/var/lib/postgresql/backups/shop_{date}.dump", 15.8, 13 * 60],
+        ],
+        "jobs": [
+            {"name": "db-backup", "schedule": "daily", "last_run_minutes_ago": 13 * 60,
+             "command": "pg_dump -U shop shop > /var/lib/postgresql/backups/shop_$(date +%F).dump"},
+        ],
         "recent_changes": [
             [2 * DAY, "Added nightly database backup job (pg_dump to /var/lib/postgresql/backups)"],
         ],
@@ -104,6 +116,13 @@ def apply_fault(server: Server, fault: dict) -> None:
     for mount, values in changes.get("disks", {}).items():
         for key, value in values.items():
             setattr(server.disks[mount], key, value)
+
+    for path, size_gb, minutes_back in changes.get("files", []):
+        date = f"{minutes_ago(minutes_back):%Y-%m-%d}"
+        server.add_file(path.replace("{date}", date), size_gb, minutes_back)
+
+    for job in changes.get("jobs", []):
+        server.add_job(job["name"], job["schedule"], job["command"], job.get("last_run_minutes_ago"))
 
     for name, values in changes.get("containers", {}).items():
         container = server.containers[name]

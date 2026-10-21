@@ -3,7 +3,8 @@ simulator.py
 A pretend server running 4 Docker containers, so the agent has something safe to break and investigate.
 
 Nothing here touches a real machine. The whole server is plain Python data:
-containers (status, memory, restarts, logs), disks, recent changes and health checks.
+containers (status, memory, restarts, logs), disks and the big files on them,
+scheduled jobs, recent changes and health checks.
 Faults (faults.py) change this data, and tools (tools.py) read it, the same way
 real commands like "docker ps" or "df -h" read a real server.
 """
@@ -50,11 +51,30 @@ class Disk:
     used_gb: float
 
 
+@dataclass
+class StoredItem:
+    """A big file or folder on a disk, like a line of 'du -sh': how big it is and when it last changed."""
+
+    size_gb: float
+    modified: datetime
+
+
+@dataclass
+class Job:
+    """A scheduled job, like a line in the server's crontab."""
+
+    name: str
+    schedule: str  # e.g. "daily"
+    command: str
+    enabled: bool = True
+    last_run: datetime | None = None
+
+
 class Server:
     """The whole fake server. It starts healthy; faults break it, fixes repair it."""
 
     def __init__(self) -> None:
-        """Build a healthy server: 4 containers, 2 disks, normal logs and a short change history."""
+        """Build a healthy server: 4 containers, 2 disks with their files, 1 job, normal logs and a short change history."""
         # The machine's total memory. All container memory limits together must fit into it.
         self.memory_total_mb = 8192
         self.containers = {
@@ -71,6 +91,18 @@ class Server:
             "/": Disk("/", size_gb=30, used_gb=11.2),
             "/var/lib/postgresql": Disk("/var/lib/postgresql", size_gb=50, used_gb=18.4),
         }
+        # The big files and folders on the disks, so 'du' can show what fills a disk.
+        # Their sizes add up to each disk's "used" above; a fault that adds files raises "used" too.
+        self.files: dict[str, StoredItem] = {}
+        self.add_file("/var/lib/docker", 8.9, 12 * DAY)
+        self.add_file("/usr", 1.9, 30 * DAY)
+        self.add_file("/var/log", 0.4, 10)
+        self.add_file("/var/lib/postgresql/data", 18.4, 2)
+        # Folders a fix must never move: the database's own data lives here.
+        self.protected_paths = ["/var/lib/postgresql/data"]
+        # Scheduled jobs, like the server's crontab.
+        self.jobs: dict[str, Job] = {}
+        self.add_job("rotate-logs", "daily", "logrotate /etc/logrotate.conf", last_run_minutes_ago=9 * 60)
         # Deploys and config changes. "What changed?" is the first question in any incident.
         self.changes = []
         self.add_change("Upgraded cache from redis 7.2 to 7.4", 9 * DAY)
@@ -85,6 +117,33 @@ class Server:
     def add_change(self, text: str, minutes_back: float = 0) -> None:
         """Record a deploy or config change, as if it happened a given number of minutes ago."""
         self.changes.append((minutes_ago(minutes_back), text))
+
+    def add_file(self, path: str, size_gb: float, minutes_back: float = 0) -> None:
+        """Put a file or folder of a given size on the server, last changed a given number of minutes ago."""
+        self.files[path] = StoredItem(size_gb, minutes_ago(minutes_back))
+
+    def add_job(self, name: str, schedule: str, command: str,
+                last_run_minutes_ago: float | None = None) -> None:
+        """Add a scheduled job; last_run_minutes_ago is None if it never ran yet."""
+        last_run = minutes_ago(last_run_minutes_ago) if last_run_minutes_ago is not None else None
+        self.jobs[name] = Job(name, schedule, command, last_run=last_run)
+
+    def disk_of(self, path: str) -> str | None:
+        """Return the mount a path lives on (the longest matching mount), like 'df PATH' does."""
+        matches = [m for m in self.disks if path == m or path.startswith(m.rstrip("/") + "/")]
+        return max(matches, key=len) if matches else None
+
+    def items_under(self, path: str) -> dict[str, StoredItem]:
+        """Every file or folder at or inside `path` that is on the same disk as `path` (like 'du -x')."""
+        path = path.rstrip("/") or "/"
+        disk = self.disk_of(path)
+        prefix = "/" if path == "/" else path + "/"
+        return {p: item for p, item in self.files.items()
+                if (p == path or p.startswith(prefix)) and self.disk_of(p) == disk}
+
+    def size_under(self, path: str) -> float:
+        """Total size in GB of everything at or inside `path` on its disk: what moving it would move."""
+        return sum(item.size_gb for item in self.items_under(path).values())
 
     def _add_normal_logs(self) -> None:
         """Fill the containers with everyday log lines, so the agent has to find the signal in the noise."""

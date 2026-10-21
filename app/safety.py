@@ -5,7 +5,8 @@ The guardrail between the AI and the server: plain Python rules, no AI.
 Ultra can only suggest fixes from a fixed menu of actions (ACTIONS below). A fix option has
 1-3 steps, each one action from the menu. Before any option is shown to a human,
 check_options() tests every step of every option: is it a real action,
-on a real container or disk, with sensible values, and nothing that can destroy data?
+on a real container, disk or job, with sensible values, does a move fit on the target disk,
+and is there nothing that can destroy data?
 Options that fail are blocked, with the reason, so a human can see the guardrail working.
 
 The AI suggests, this file checks, a human approves. Nothing runs without all three.
@@ -32,11 +33,12 @@ ACTIONS = {
     },
     "move_files": {
         "params": ["from_path", "to_mount"],
-        "meaning": "move a folder to another disk to free space",
+        "meaning": "move a file or folder (exact path from check_folder_sizes) to another disk to free space; "
+                   "it must fit into that disk's free space",
     },
     "disable_job": {
         "params": ["job"],
-        "meaning": "turn off a scheduled job, e.g. a backup job",
+        "meaning": "turn off a scheduled job, by its exact name from list_jobs",
     },
 }
 
@@ -71,10 +73,10 @@ def find_forbidden(text: str) -> str | None:
     return None
 
 
-def disk_of(server: Server, path: str) -> str | None:
-    """Return the mount a path lives on (the longest matching mount), like 'df' does."""
-    matches = [m for m in server.disks if path == m or path.startswith(m.rstrip("/") + "/")]
-    return max(matches, key=len) if matches else None
+def touches_protected(server: Server, path: str) -> bool:
+    """True if moving `path` would move a protected folder, or something inside one."""
+    return any(path == p or path.startswith(p + "/") or p.startswith(path + "/")
+               for p in server.protected_paths)
 
 
 def check_action(server: Server, action: dict) -> str | None:
@@ -113,19 +115,34 @@ def check_action(server: Server, action: dict) -> str | None:
 
     if kind == "move_files":
         source = action["from_path"].rstrip("/")
-        from_disk = disk_of(server, source)
+        from_disk = server.disk_of(source)
         if from_disk is None:
             return f"{source} is not on any disk of this server"
         if source == from_disk.rstrip("/") or source == "":
             return f"{source} is a whole disk; move one folder, not everything"
-        # The part of the path inside the disk, e.g. "backups" or "pg_wal/...".
+        # Any database folder name anywhere in the path counts, e.g. ".../data/pg_wal".
         inside = source[len(from_disk.rstrip("/")):].lstrip("/")
-        if inside.split("/")[0] in DATABASE_FOLDERS:
+        if touches_protected(server, source) or any(part in DATABASE_FOLDERS for part in inside.split("/")):
             return f"{source} holds the database's own data; moving it can destroy data"
         if action["to_mount"] not in server.disks:
             return f"there is no disk mounted at {action['to_mount']}"
         if action["to_mount"] == from_disk:
             return "the files would stay on the same disk"
+        # The move must fit, or it fills the other disk and breaks whatever runs there.
+        size = server.size_under(source)
+        if size == 0:
+            return f"nothing found at {source}"
+        target = server.disks[action["to_mount"]]
+        free = target.size_gb - target.used_gb
+        if size > free:
+            return f"{source} is {size:.1f} GB, but {action['to_mount']} has only {free:.1f} GB free"
+
+    if kind == "disable_job":
+        job = server.jobs.get(action["job"])
+        if job is None:
+            return f"there is no job called '{action['job']}' (jobs: {', '.join(server.jobs)})"
+        if not job.enabled:
+            return f"the job '{job.name}' is already turned off"
 
     return None
 

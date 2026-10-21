@@ -40,6 +40,9 @@ def main() -> None:
     show("docker ps -a", tools.list_containers(server))
     show("docker stats --no-stream", tools.get_metrics(server))
     show("df -h", tools.check_disk(server))
+    for mount in server.disks:
+        show(f"du -xsh --time {mount.rstrip('/')}/*", tools.check_folder_sizes(server, mount))
+    show("crontab -l", tools.list_jobs(server))
     show("recent changes", tools.recent_changes(server))
     for url in server.endpoints:
         show(f"curl {url}", tools.check_endpoint(server, url))

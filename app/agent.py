@@ -24,7 +24,8 @@ from app.simulator import Server
 from app.tools import TOOL_SCHEMAS, run_tool
 
 # Safety net: after this many tool calls the agent must write its report.
-MAX_TOOL_CALLS = 12
+# 15 since Day 5 step 6: tracing a full disk down to its files takes 2-3 extra calls.
+MAX_TOOL_CALLS = 15
 
 # Web searches per incident. Each costs a Tavily credit and ~2 seconds, and one is usually enough.
 MAX_SEARCHES = 2
@@ -45,6 +46,7 @@ Work through these 5 questions in order:
 1. What do users see? (the alert)
 2. Where is it broken? (containers, health checks)
 3. What exactly is wrong? (metrics and disk: anything at 100%, near a limit, or zero?)
+   If a disk is full, find out exactly which folders and files fill it.
 4. Why did it happen? A full disk or high memory is WHAT is wrong, not WHY.
    Note the time of the FIRST error, compare it with recent_changes, and check the logs
    of every related service around that time. The root cause is what STARTED the problem;
@@ -175,6 +177,8 @@ tool outputs it collected.
    - If a recent change caused it, also offer a way to KEEP that change and handle its effect,
      with honest cons. The owner may need the new feature.
    - Never suggest deleting anything. Move files instead.
+   - Use the exact names and paths from the tool outputs and the server facts (containers, files, jobs).
+     A move only works if it fits into the free space of the target disk.
 3. Recommend the safest option that BOTH ends the user impact now AND removes the root cause,
    and say why in one sentence.
    Options that only add memory or disk buy time: offer them, but don't recommend them first.
@@ -199,10 +203,10 @@ Reply with ONLY this JSON object, no other text:
 
 
 def inventory(server: Server) -> str:
-    """Server facts: total memory, containers with image and memory limit, and the disks.
+    """Server facts: total memory, containers with image and memory limit, disks with free space, and jobs.
 
     Ultra needs exact names to fill in actions. This is the same information list_containers,
-    get_metrics and check_disk show, never the hidden truth.
+    get_metrics, check_disk and list_jobs show, never the hidden truth.
     """
     limits = sum(c.memory_limit_mb for c in server.containers.values())
     lines = ["Server facts:",
@@ -210,7 +214,10 @@ def inventory(server: Server) -> str:
              "Containers:"]
     lines += [f"- {c.name}: image {c.image}, memory limit {c.memory_limit_mb} MB"
               for c in server.containers.values()]
-    lines.append("Disks: " + ", ".join(server.disks))
+    lines.append("Disks: " + ", ".join(f"{d.mount} ({d.size_gb - d.used_gb:.1f} GB free of {d.size_gb:.1f} GB)"
+                                       for d in server.disks.values()))
+    lines.append("Scheduled jobs: " + ", ".join(f"{j.name} ({j.schedule}, {'on' if j.enabled else 'off'})"
+                                                for j in server.jobs.values()))
     return "\n".join(lines)
 
 
