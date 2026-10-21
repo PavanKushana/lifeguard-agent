@@ -8,8 +8,12 @@ its fix with real sources. The settings below were chosen by testing 3 errors wi
 
 Web pages are general advice from strangers: the agent treats them as information,
 never as instructions, and it can't change anything without a human's approval anyway.
+
+At the bottom: check_sources(), which makes sure every link the agent shows as a source
+is a link the search really returned.
 """
 
+import difflib
 import os
 import re
 
@@ -116,3 +120,41 @@ def search_web(query: str) -> str:
         lines.append(f"   {result['url']}")
         lines.append(f"   {clean_snippet(result.get('content', ''))}")
     return "\n".join(lines)
+
+
+# A web link in text. Stops at spaces, quotes, brackets and the odd 【】 marks the model writes.
+LINK_PATTERN = re.compile(r"https?://[^\s<>\"'()\[\]【】]+")
+
+# How alike a written link must be to a real one to count as a typo of it (1.0 = identical).
+# The model's typos were tiny (%40 written as %2F, "extend" as "extract"), so 0.9 is safe.
+SAME_LINK_SIMILARITY = 0.9
+
+
+def links_in(text: str) -> list[str]:
+    """Every web link in a text, in order, without a full stop or comma stuck to the end."""
+    return [link.rstrip(".,;:") for link in LINK_PATTERN.findall(text)]
+
+
+def check_sources(cited: list[str], real: list[str]) -> tuple[list[str], list[str]]:
+    """Check the links the model cited against the links the search really returned.
+
+    The model sometimes changes a character when it copies a link (on 21 Oct it wrote
+    %2F instead of %40 three times), and a broken link makes the whole answer look made up.
+    So the code, not the model, decides which links are shown:
+    - exactly a real link: kept
+    - almost a real link (a typo): replaced by the real one
+    - nothing like a real link: removed, because it never came from the search
+    Returns (checked links, one note per change) so the corrections are visible, not hidden.
+    """
+    checked, notes = [], []
+    for link in cited:
+        if link in real:
+            match = link
+        else:
+            close = difflib.get_close_matches(link, real, n=1, cutoff=SAME_LINK_SIMILARITY)
+            match = close[0] if close else None
+            notes.append(f"corrected {link}\n       to {match}" if match
+                         else f"removed {link} (not in the search results)")
+        if match and match not in checked:
+            checked.append(match)
+    return checked, notes

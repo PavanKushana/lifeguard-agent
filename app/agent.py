@@ -12,16 +12,21 @@ Flow for one incident:
    2-3 fix options (each 1-3 steps from a fixed action menu), with pros, cons and how to undo each.
    safety.py checks every option before a human sees it.
 
+The SOURCES links of Super and Ultra are checked in code against what the search really
+returned (web_search.check_sources), because models sometimes change a character in a link.
+
 Every step is passed to `on_step`, so the terminal now (and the web page later) can show
 a live timeline. The agent only ever sees the alert and tool outputs, never the hidden truth.
 """
 
 import json
+import re
 
 from app.llm import Usage, ask
 from app.safety import ACTIONS, MAX_STEPS, check_options
 from app.simulator import Server
 from app.tools import TOOL_SCHEMAS, run_tool
+from app.web_search import check_sources, links_in
 
 # Safety net: after this many tool calls the agent must write its report.
 # 15 since Day 5 step 6: tracing a full disk down to its files takes 2-3 extra calls.
@@ -80,6 +85,25 @@ def parse_json(text: str) -> dict:
     return json.loads(text[start:end + 1])
 
 
+def search_links(evidence: list) -> list[str]:
+    """Every link that search_web really returned during this investigation."""
+    return [link for entry in evidence if entry.startswith("$ search_web") for link in links_in(entry)]
+
+
+def fix_report_sources(report: str, real_links: list[str]) -> tuple[str, list[str]]:
+    """Rewrite the SOURCES part of Super's report with checked links only (see check_sources).
+
+    Returns the new report and the notes about every link that was corrected or removed.
+    """
+    # The last "SOURCES:" heading, with or without **bold** marks around it.
+    headings = list(re.finditer(r"\**SOURCES:?\**", report))
+    if not headings:
+        return report, []
+    start, end = headings[-1].start(), headings[-1].end()
+    checked, notes = check_sources(links_in(report[end:]), real_links)
+    return report[:start].rstrip() + "\n\nSOURCES:\n" + ("\n".join(checked) or "none"), notes
+
+
 def triage(alert: str, usage: Usage, on_step) -> dict:
     """Ask Nano for a quick first look at the alert: severity, category, first guess."""
     reply = ask("triage", [{"role": "system", "content": TRIAGE_PROMPT},
@@ -131,7 +155,11 @@ def investigate(server: Server, alert: str, first_look: dict, usage: Usage, on_s
 
         if not reply.tool_calls:
             report = reply.content or "(the model returned no report)"
+            report, notes = fix_report_sources(report, search_links(evidence))
             on_step("report", report)
+            if notes:
+                on_step("rule", "Source links in the report checked against the search results:\n"
+                        + "\n".join(f"  - {note}" for note in notes))
             return report, evidence
 
         # Sometimes the model says what it's thinking before calling a tool: show that too.
@@ -255,7 +283,14 @@ def final_call(server: Server, alert: str, report: str, evidence: list, usage: U
     safe, blocked = check_options(server, options)
     result["options"], result["blocked"] = safe, blocked
 
+    # Same check as for Super's report: only links the search really returned are shown.
+    cited = links_in(" ".join(str(source) for source in result.get("sources", [])))
+    result["sources"], source_notes = check_sources(cited, search_links(evidence))
+
     on_step("final_call", format_final_call(result))
+    if source_notes:
+        on_step("rule", "Source links in the final call checked against the search results:\n"
+                + "\n".join(f"  - {note}" for note in source_notes))
     for item in blocked:
         on_step("safety", f"BLOCKED: {item['title']}\n  reason: {item['reason']}")
     if not blocked:
