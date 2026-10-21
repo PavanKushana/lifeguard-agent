@@ -2,6 +2,7 @@
 run_incident.py
 Break the fake server with a preset fault and watch the agent investigate it, step by step.
 At the end you pick one of Ultra's fix options and approve it, or reject them all.
+An approved fix is applied to the fake server, which is then checked: FIXED, FIXED FOR NOW or NOT FIXED.
 
 Run from the project folder:
     python -m scripts.run_incident disk_full
@@ -17,9 +18,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from app import tools
 from app.agent import handle_incident
 from app.approval import approve_option
 from app.faults import PRESETS, apply_fault
+from app.fixes import apply_fix, verify
 from app.llm import MODELS
 from app.simulator import Server
 
@@ -33,6 +36,9 @@ LABELS = {
     "final_call": "FINAL CALL (Ultra)",
     "safety": "SAFETY CHECK",
     "rule": "RULE CHECK",
+    "apply": "APPLYING THE FIX",
+    "after": "AFTER THE FIX",
+    "verdict": "RESULT",
 }
 
 # Every run is saved here, one file per run, never overwritten.
@@ -110,9 +116,40 @@ def ask_human(server: Server, final: dict | None) -> dict | None:
 
     decision = approve_option(server, final, number, approved_by=getpass.getuser())
     say(f"\nDECISION: {decision['note']} (by {decision['by']} at {decision['at']})")
-    if decision["approved"]:
-        say("(Applying the fix to the server comes in the next step.)")
     return decision
+
+
+def fix_and_verify(server: Server, fault: dict, decision: dict | None) -> None:
+    """Apply the approved fix (if any), show the server afterwards, then always give the verdict.
+
+    A rejected fix gets a verdict too: nothing changed, so the problem is still there (NOT FIXED).
+    The grader on Day 10 needs a verdict for every run, whatever the human decided.
+    """
+    approved = bool(decision and decision["approved"])
+    if approved:
+        done = apply_fix(server, decision)
+        print_step("apply", "\n".join(f"{number}. {line}" for number, line in enumerate(done, start=1)))
+
+    # Grade first: if users are OK again, verify() also lets the server recover, so the
+    # "after" view below shows the real state, errors gone or not.
+    result = verify(server, fault)
+
+    if approved:
+        after = [("df -h", tools.check_disk(server)),
+                 ("docker ps -a", tools.list_containers(server)),
+                 ("crontab -l", tools.list_jobs(server)),
+                 ("curl http://localhost/api/health",
+                  tools.check_endpoint(server, "http://localhost/api/health")),
+                 ("docker logs --tail 3 api", tools.get_logs(server, "api", lines=3)),
+                 ("docker logs --tail 3 db", tools.get_logs(server, "db", lines=3))]
+        print_step("after", "\n\n".join(f"$ {command}\n{output}" for command, output in after))
+
+    lines = [result["verdict"]]
+    if not approved:
+        lines.append("No fix was approved, so nothing was changed.")
+    lines += ["", "Users OK?"] + [f"  {line}" for line in result["users_ok"]]
+    lines += ["Stays fixed?"] + [f"  {line}" for line in result["stays_fixed"]]
+    print_step("verdict", "\n".join(lines))
 
 
 def main() -> None:
@@ -128,7 +165,8 @@ def main() -> None:
     say(f"ALERT: {fault['alert']}")
 
     result = handle_incident(server, fault["alert"], print_step)
-    ask_human(server, result["final"])
+    decision = ask_human(server, result["final"])
+    fix_and_verify(server, fault, decision)
 
     say("\n" + "=" * 70)
     say("HIDDEN TRUTH (the agent never saw this):")

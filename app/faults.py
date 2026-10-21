@@ -2,10 +2,15 @@
 faults.py
 Ways to break the fake server, written as data instead of code.
 
-Every fault has three parts:
-- alert:   what a user or monitor reports. This is the ONLY part the agent sees.
-- truth:   the real cause and fix. Hidden from the agent; the grader uses it later.
-- changes: what to change in the Server (disks, files, jobs, containers, logs, health checks, deploys).
+Every fault has these parts:
+- alert:      what a user or monitor reports. This is the ONLY part the agent sees.
+- truth:      the real cause and fix. Hidden from the agent; the grader uses it later.
+- changes:    what to change in the Server (disks, files, jobs, containers, logs, health checks, deploys).
+- fixed_when: after a fix, how to tell if it worked (checked by fixes.py, also hidden):
+              "users_ok"    = what users see is fine again,
+              "stays_fixed" = the cause is gone, so it won't come back.
+              Each is {"all": [...]} or {"any": [...]} of checks like {"check": "disk_free_gb", ...}.
+- recovery:   how the server looks once users are OK again (same format as changes).
 
 Because a fault is plain data, the presets below and the custom faults that
 Ultra writes from a user's text (Day 6) use exactly the same format.
@@ -58,6 +63,18 @@ DISK_FULL = {
             ],
         },
     },
+    "fixed_when": {
+        # PostgreSQL needs some room to write new orders; 1 GB is plenty for a day.
+        "users_ok": {"all": [{"check": "disk_free_gb", "mount": "/var/lib/postgresql", "at_least": 1.0}]},
+        # Each night the job writes another 15.8 GB onto the same disk, so it must be off.
+        "stays_fixed": {"all": [{"check": "job_enabled", "job": "db-backup", "is": False}]},
+    },
+    "recovery": {
+        "logs": {
+            "api": [[0, "INFO POST /api/orders 201 in 58ms"]],
+            "db": [[0, "LOG:  checkpoint complete: wrote 97 buffers (0.6%)"]],
+        },
+    },
 }
 
 # A new report page runs a huge query; PostgreSQL goes over its 1 GB memory limit,
@@ -104,6 +121,24 @@ DB_OUT_OF_MEMORY = {
             ],
         },
     },
+    "fixed_when": {
+        # The report query needs about 1.4 GB. Without it (2.3.1) the db is fine with 1 GB,
+        # and with it the db only survives if its limit is raised to at least that.
+        "users_ok": {"any": [
+            {"check": "image", "container": "api", "is": "shopapp/api:2.3.1"},
+            {"check": "memory_limit_mb", "container": "db", "at_least": 1400},
+        ]},
+        # More memory only buys time: as the orders table grows, the query needs more.
+        "stays_fixed": {"all": [{"check": "image", "container": "api", "is": "shopapp/api:2.3.1"}]},
+    },
+    "recovery": {
+        "containers": {"db": {"status": "running", "since_minutes_ago": 0, "memory_mb": 340, "cpu_percent": 3.0}},
+        "endpoints": {"http://localhost/api/health": {"status": 200, "ms": 65}},
+        "logs": {
+            "api": [[0, "INFO GET /api/products 200 in 42ms"]],
+            "db": [[0, "LOG:  checkpoint complete: wrote 210 buffers (1.3%)"]],
+        },
+    },
 }
 
 PRESETS = {fault["id"]: fault for fault in (DISK_FULL, DB_OUT_OF_MEMORY)}
@@ -111,8 +146,11 @@ PRESETS = {fault["id"]: fault for fault in (DISK_FULL, DB_OUT_OF_MEMORY)}
 
 def apply_fault(server: Server, fault: dict) -> None:
     """Break the server the way the fault describes. Only 'changes' is used; the truth stays hidden."""
-    changes = fault["changes"]
+    apply_changes(server, fault["changes"])
 
+
+def apply_changes(server: Server, changes: dict) -> None:
+    """Change the server as described: used to break it (a fault's changes) and to heal it (its recovery)."""
     for mount, values in changes.get("disks", {}).items():
         for key, value in values.items():
             setattr(server.disks[mount], key, value)
