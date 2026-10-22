@@ -45,21 +45,26 @@ class Usage:
     seconds: float = 0.0
     tokens_in: int = 0
     tokens_out: int = 0
+    # Nemotron thinks before it answers (hidden "reasoning_content"). Those tokens are part of
+    # tokens_out and count against max_tokens, so they're counted separately to see how much they take.
+    tokens_thinking: int = 0
     # Why the newest reply ended: "stop" (finished) or "length" (cut off at max_tokens).
     # Kept so a broken reply can say whether it was cut off, instead of us guessing.
     last_finish: str = ""
 
     def summary(self) -> str:
-        """One line like '5 model calls, 12.3 s, 4,210 tokens in, 1,180 out'."""
+        """One line like '5 model calls, 12.3 s, 4,210 tokens in, 1,180 out (620 of them thinking)'."""
         return (f"{self.calls} model calls, {self.seconds:.1f} s, "
-                f"{self.tokens_in:,} tokens in, {self.tokens_out:,} out")
+                f"{self.tokens_in:,} tokens in, {self.tokens_out:,} out ({self.tokens_thinking:,} of them thinking)")
 
 
-def ask(job: str, messages: list, usage: Usage, tools: list | None = None, max_tokens: int = 1500):
+def ask(job: str, messages: list, usage: Usage, tools: list | None = None, max_tokens: int = 4000):
     """Send the conversation to the model for this job (a key of MODELS, e.g. 'triage' or 'final_call').
 
     Adds the time and tokens to `usage`, notes why the reply ended (usage.last_finish)
     and returns the model's reply message.
+    max_tokens includes the model's hidden thinking, so it must leave room for both.
+    It's only a ceiling: we pay for the tokens really written, not for the room.
     """
     options = {"model": MODELS[job], "messages": messages, "max_tokens": max_tokens}
     if tools:
@@ -73,5 +78,7 @@ def ask(job: str, messages: list, usage: Usage, tools: list | None = None, max_t
     if response.usage:  # token counts, which is what we pay for
         usage.tokens_in += response.usage.prompt_tokens
         usage.tokens_out += response.usage.completion_tokens
+        details = response.usage.completion_tokens_details
+        usage.tokens_thinking += (details.reasoning_tokens or 0) if details else 0
     usage.last_finish = response.choices[0].finish_reason or ""
     return response.choices[0].message

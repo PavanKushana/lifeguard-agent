@@ -11,6 +11,7 @@ or a custom fault saved earlier (checked again when loaded, in case the file was
 Run from the project folder:
     python -m scripts.run_incident disk_full
     python -m scripts.run_incident db_out_of_memory
+    python -m scripts.run_incident slow_db_chain       (also: bad_deploy, wrong_db_password, cache_crashed)
     python -m scripts.run_incident --custom "the cache crashed"
     python -m scripts.run_incident --random
     python -m scripts.run_incident results/custom_faults/2026-10-22_1942.json

@@ -142,7 +142,222 @@ DB_OUT_OF_MEMORY = {
     },
 }
 
-PRESETS = {fault["id"]: fault for fault in (DISK_FULL, DB_OUT_OF_MEMORY)}
+# A new api version imports a library its image doesn't have, so it crashes on start, and Docker
+# keeps restarting it. Without the api, nginx can't reach anything and every page is a 502.
+API_CRASH_LOOP = [
+    "INFO Starting shopapp api 2.3.2",
+    "Traceback (most recent call last):",
+    '  File "/app/shopapp/config.py", line 3, in <module>',
+    "    from pydantic_settings import BaseSettings",
+    "ModuleNotFoundError: No module named 'pydantic_settings'",
+]
+WEB_NO_UPSTREAM = ('[error] 29#29: *1841 connect() failed (111: Connection refused) while connecting to '
+                   'upstream, client: 172.18.0.1, server: _, request: "GET /products HTTP/1.1", '
+                   'upstream: "http://172.18.0.3:8000/api/products"')
+
+BAD_DEPLOY = {
+    "id": "bad_deploy",
+    "title": "API crashes after a deploy",
+    "alert": "Every page of the shop shows '502 Bad Gateway', for about 20 minutes now.",
+    "truth": {
+        "service": "api",
+        "category": "deploy",
+        "root_cause": "api 2.3.2 imports the pydantic_settings library, but it isn't installed in the image, "
+                      "so the app crashes on start (exit code 1) and Docker keeps restarting it.",
+        "fix": "Roll back api to 2.3.1, then check the pages load. Long term: start every new image once "
+               "in the build pipeline before it's deployed.",
+    },
+    "changes": {
+        "containers": {"api": {"image": "shopapp/api:2.3.2", "status": "restarting", "exit_code": 1,
+                               "restarts": 14, "since_minutes_ago": 1}},
+        "recent_changes": [[21, "Deployed api 2.3.2 (settings moved to pydantic-settings)"]],
+        "endpoints": {"http://localhost/": {"status": 502, "ms": 3},
+                      "http://localhost/api/health": {"status": 502, "ms": 2}},
+        "stop_normal_logs": {"api": 21, "web": 21},
+        "logs": {
+            # The same crash on every restart; three of them are enough to see the pattern.
+            "api": [[minute, line] for minute in (21, 11, 1) for line in API_CRASH_LOOP],
+            "web": [line for minute in (20, 12, 2) for line in
+                    ([minute, WEB_NO_UPSTREAM], [minute, '172.18.0.1 - - "GET /products HTTP/1.1" 502 157'])],
+        },
+    },
+    "fixed_when": {
+        "users_ok": {"all": [{"check": "image", "container": "api", "is": "shopapp/api:2.3.1"}]},
+        "stays_fixed": {"all": [{"check": "image", "container": "api", "is": "shopapp/api:2.3.1"}]},
+    },
+    "recovery": {
+        "containers": {"api": {"status": "running", "exit_code": 0, "restarts": 0, "since_minutes_ago": 0}},
+        "endpoints": {"http://localhost/": {"status": 200, "ms": 40},
+                      "http://localhost/api/health": {"status": 200, "ms": 65}},
+        "logs": {
+            "api": [[0, "INFO Starting shopapp api 2.3.1"], [0, "INFO GET /api/products 200 in 42ms"]],
+            "web": [[0, '172.18.0.1 - - "GET /products HTTP/1.1" 200 5123']],
+        },
+    },
+}
+
+# A new api version reads the database password from a different setting, gets it wrong,
+# and PostgreSQL refuses every login. The api still runs, so docker ps looks fine.
+WRONG_DB_PASSWORD = {
+    "id": "wrong_db_password",
+    "title": "Wrong database password after a deploy",
+    "alert": "The home page loads, but every product page says 'Service unavailable'.",
+    "truth": {
+        "service": "api",
+        "category": "config",
+        "root_cause": "api 2.3.2 reads the database password from a new setting that was never filled in, "
+                      "so PostgreSQL rejects every login from the api.",
+        "fix": "Roll back api to 2.3.1, then check the product pages. Long term: check all required "
+               "settings when the app starts, so a missing one stops the deploy instead of the shop.",
+    },
+    "changes": {
+        "containers": {"api": {"image": "shopapp/api:2.3.2", "since_minutes_ago": 35}},
+        "recent_changes": [[35, "Deployed api 2.3.2 (database settings read from environment)"]],
+        "endpoints": {"http://localhost/api/health": {"status": 503, "ms": 15}},
+        "stop_normal_logs": {"api": 35, "web": 35},
+        "logs": {
+            "api": [[35, "INFO Starting shopapp api 2.3.2"]] + [
+                [minute, 'ERROR GET /api/products 503: database connection failed: FATAL:  '
+                         'password authentication failed for user "shop"'] for minute in (34, 22, 9, 1)],
+            "db": [line for minute in (34, 22, 9, 1) for line in (
+                [minute, 'FATAL:  password authentication failed for user "shop"'],
+                [minute, 'DETAIL:  Connection matched file "/var/lib/postgresql/data/pg_hba.conf" '
+                         'line 100: "host all all all scram-sha-256"'])],
+            "web": [[minute, '172.18.0.1 - - "GET /products HTTP/1.1" 503 197'] for minute in (34, 22, 9, 1)],
+        },
+    },
+    "fixed_when": {
+        "users_ok": {"all": [{"check": "image", "container": "api", "is": "shopapp/api:2.3.1"}]},
+        "stays_fixed": {"all": [{"check": "image", "container": "api", "is": "shopapp/api:2.3.1"}]},
+    },
+    "recovery": {
+        "endpoints": {"http://localhost/api/health": {"status": 200, "ms": 65}},
+        "logs": {
+            "api": [[0, "INFO Starting shopapp api 2.3.1"], [0, "INFO Connected to database db:5432"],
+                    [0, "INFO GET /api/products 200 in 42ms"]],
+            "web": [[0, '172.18.0.1 - - "GET /products HTTP/1.1" 200 5123']],
+        },
+    },
+}
+
+# Redis hits a rare bug and crashes once (signal 11). The container has no restart policy,
+# so it stays down: products still load from the database, but login and cart need the cache.
+CACHE_CRASHED = {
+    "id": "cache_crashed",
+    "title": "Cache crashed and stayed down",
+    "alert": "Customers can see products, but they can't log in or add anything to the cart.",
+    "truth": {
+        "service": "cache",
+        "category": "crash",
+        "root_cause": "Redis crashed once on a rare bug (signal 11, segmentation fault). The container has "
+                      "no restart policy, so it stayed down, and login and cart, which keep sessions in "
+                      "Redis, fail.",
+        "fix": "Restart the cache, then check login and cart. Long term: give the containers a restart "
+               "policy (restart: unless-stopped) and watch for a Redis update that fixes the bug.",
+    },
+    "changes": {
+        # Exit code 139 = 128 + 11: killed by signal 11, a crash, not out of memory (that would be 137).
+        "containers": {"cache": {"status": "exited", "exit_code": 139, "since_minutes_ago": 25}},
+        "endpoints": {"http://localhost/api/health": {"status": 503, "ms": 8}},
+        "logs": {
+            "cache": [
+                [25, "=== REDIS BUG REPORT START: Cut & paste starting from here ==="],
+                [25, "# Redis 7.4.0 crashed by signal: 11, si_code: 1"],
+                [25, "# Accessing address: 0x7f3a2c000010"],
+                [25, "# Crashed running the instruction at: 0x55d1c2a3f1b4"],
+                [25, "=== REDIS BUG REPORT END. Make sure to include from START to END. ==="],
+            ],
+            "api": [
+                [24, "ERROR POST /api/login 500: Error 111 connecting to cache:6379. Connection refused."],
+                [17, "ERROR POST /api/cart 500: Error 111 connecting to cache:6379. Connection refused."],
+                [10, "ERROR GET /api/health 503: Error 111 connecting to cache:6379. Connection refused."],
+                [3, "ERROR POST /api/cart 500: Error 111 connecting to cache:6379. Connection refused."],
+            ],
+        },
+    },
+    "fixed_when": {
+        # A one-off crash: once Redis runs again, nothing is left that would crash it right away.
+        "users_ok": {"all": [{"check": "container_running", "container": "cache"}]},
+        "stays_fixed": {"all": [{"check": "container_running", "container": "cache"}]},
+    },
+    "recovery": {
+        "containers": {"cache": {"status": "running", "exit_code": 0, "since_minutes_ago": 0}},
+        "endpoints": {"http://localhost/api/health": {"status": 200, "ms": 65}},
+        "logs": {
+            "cache": [[0, "* Ready to accept connections tcp"]],
+            "api": [[0, "INFO POST /api/cart 200 in 35ms"]],
+        },
+    },
+}
+
+# The chain fault: the first red service is NOT the cause.
+# A new export job was meant to run daily, but runs every 5 minutes. Its huge query keeps the
+# database busy, so the api's queries time out, its workers get killed, and nginx answers 502.
+# What users see is web (502), the errors are in api, the cause is a job hitting db.
+SALES_QUERY = ("SELECT o.id, o.created_at, c.email, SUM(i.qty * i.price) FROM orders o "
+               "JOIN customers c ON c.id = o.customer_id JOIN order_items i ON i.order_id = o.id "
+               "GROUP BY o.id, c.email ORDER BY o.created_at")
+
+SLOW_DB_CHAIN = {
+    "id": "slow_db_chain",
+    "title": "Export job slows the database (chain)",
+    "alert": "The shop is very slow and many pages end in '502 Bad Gateway'. It started less than an hour ago.",
+    "truth": {
+        "service": "db",
+        "category": "config",
+        "root_cause": "The new sales-export job was meant to run daily but runs every 5 minutes. Its huge "
+                      "export query keeps PostgreSQL busy, so the api's queries time out, its workers are "
+                      "killed, and nginx answers 502. web and api only show the effect.",
+        "fix": "Turn off the sales-export job, then check the pages are fast again. Long term: run it "
+               "daily at night, against a read-only copy of the database.",
+    },
+    "changes": {
+        # psql's \copy runs on the server as "COPY (...) TO STDOUT", which is what the db log shows.
+        "jobs": [{"name": "sales-export", "schedule": "every 5 minutes", "last_run_minutes_ago": 1,
+                  "command": f'psql -U shop -c "\\copy ({SALES_QUERY}) TO /srv/exports/sales.csv CSV HEADER"'}],
+        "recent_changes": [[48, "Added sales-export job for the accounting team (daily sales CSV)"]],
+        "containers": {"db": {"cpu_percent": 97.0, "memory_mb": 880}, "api": {"cpu_percent": 1.5}},
+        "endpoints": {"http://localhost/": {"status": 502, "ms": 30004},
+                      "http://localhost/api/health": {"status": 200, "ms": 9200}},
+        "stop_normal_logs": {"api": 46, "web": 46},
+        "logs": {
+            # Every run takes about 4.5 minutes, so the next one starts right after the last one ends.
+            "db": [[minute, f"LOG:  duration: 268113.402 ms  statement: COPY ({SALES_QUERY}) TO STDOUT CSV HEADER"]
+                   for minute in (41, 36, 31, 26, 21, 16, 11, 6, 1)] + [
+                   line for minute in (39, 24, 8) for line in (
+                       [minute, "ERROR:  canceling statement due to statement timeout"],
+                       [minute, "STATEMENT:  SELECT id, name, price FROM products WHERE category_id = $1"])],
+            # A killed worker is replaced by a new one, so each timeout has its own process id
+            # (and nginx its own connection number), like on a real server.
+            "api": [line for minute, pid in ((39, 41), (24, 57), (8, 73)) for line in (
+                        [minute, "ERROR GET /api/products 500: canceling statement due to statement timeout"],
+                        [minute, f"CRITICAL WORKER TIMEOUT (pid:{pid})"])] + [
+                    [minute, "INFO GET /api/products 200 in 8412ms"] for minute in (33, 15, 2)],
+            "web": [line for minute, conn in ((39, 2210), (24, 2387), (8, 2561)) for line in (
+                        [minute, f'[error] 29#29: *{conn} upstream prematurely closed connection while reading '
+                                 'response header from upstream, client: 172.18.0.1, server: _, request: '
+                                 '"GET /products HTTP/1.1", upstream: "http://172.18.0.3:8000/api/products"'],
+                        [minute, '172.18.0.1 - - "GET /products HTTP/1.1" 502 157'])],
+        },
+    },
+    "fixed_when": {
+        # Once the job is off, the last export finishes and the database is fast again.
+        "users_ok": {"all": [{"check": "job_enabled", "job": "sales-export", "is": False}]},
+        "stays_fixed": {"all": [{"check": "job_enabled", "job": "sales-export", "is": False}]},
+    },
+    "recovery": {
+        "containers": {"db": {"cpu_percent": 3.0, "memory_mb": 340}, "api": {"cpu_percent": 4.0}},
+        "endpoints": {"http://localhost/": {"status": 200, "ms": 40},
+                      "http://localhost/api/health": {"status": 200, "ms": 65}},
+        "logs": {
+            "api": [[0, "INFO GET /api/products 200 in 42ms"]],
+            "web": [[0, '172.18.0.1 - - "GET /products HTTP/1.1" 200 5123']],
+        },
+    },
+}
+
+PRESETS = {fault["id"]: fault for fault in (DISK_FULL, DB_OUT_OF_MEMORY, BAD_DEPLOY, WRONG_DB_PASSWORD,
+                                            CACHE_CRASHED, SLOW_DB_CHAIN)}
 
 
 def apply_fault(server: Server, fault: dict) -> None:

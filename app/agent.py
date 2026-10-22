@@ -107,7 +107,7 @@ def fix_report_sources(report: str, real_links: list[str]) -> tuple[str, list[st
 def triage(alert: str, usage: Usage, on_step) -> dict:
     """Ask Nano for a quick first look at the alert: severity, category, first guess."""
     reply = ask("triage", [{"role": "system", "content": TRIAGE_PROMPT},
-                           {"role": "user", "content": alert}], usage, max_tokens=800)
+                           {"role": "user", "content": alert}], usage, max_tokens=2000)
     text = reply.content or ""
     try:
         result = parse_json(text)
@@ -215,6 +215,10 @@ tool outputs it collected.
    - If a recent change caused it, also offer a way to KEEP that change and handle its effect,
      with honest cons. The owner may need the new feature.
    - Never suggest deleting anything. Move files instead.
+   - db and cache hold data: an older version may not read the files a newer one wrote. Only roll
+     them back to undo an upgrade from the last day. A single crash after days of running fine is
+     fixed by a restart; don't blame an older upgrade without evidence that ties it to the crash.
+   - Every step must be needed: no extra memory, restarts or other changes the evidence doesn't call for.
    - Use the exact names and paths from the tool outputs and the server facts (containers, files, jobs).
      A move only works if it fits into the free space of the target disk.
 3. Recommend the safest option that BOTH ends the user impact now AND removes the root cause,
@@ -291,9 +295,9 @@ def ask_final_call(messages: list, usage: Usage, on_step) -> tuple[dict | None, 
     """
     text = ""
     for attempt in range(2):
-        # 6000, not 3000: on 22 Oct two runs in a row needed the retry for "not valid JSON",
-        # maybe cut off. Room is free: we only pay for the tokens Ultra really writes.
-        reply = ask("final_call", messages, usage, max_tokens=6000)
+        # 16000: Ultra's hidden thinking counts against the limit. On 22 Oct it was cut off at 3000
+        # and then at 6000 (3 runs). Room is free: we only pay for the tokens Ultra really writes.
+        reply = ask("final_call", messages, usage, max_tokens=16000)
         text = reply.content or ""
         try:
             parsed = parse_json(text)
@@ -397,8 +401,14 @@ def format_final_call(result: dict) -> str:
                   f"  undo:   {option['undo']}",
                   f"  can be undone: {'yes' if option['reversible'] else 'NO'} | risk: {option['risk']}"]
 
-    if result.get("why_recommended"):
-        lines += ["", f"WHY: {result['why_recommended']}"]
+    if any(option.get("recommended") for option in result["options"]):
+        if result.get("why_recommended"):
+            lines += ["", f"WHY: {result['why_recommended']}"]
+    else:
+        # 22 Oct: Ultra recommended a rollback that safety blocked, and its WHY still praised that
+        # rollback above the options that were left. Don't show reasons for an option that isn't there.
+        lines += ["", "WHY: Ultra's recommended option was blocked by the safety check (see below), "
+                      "so none of these is recommended. Compare the cons before picking."]
     if result.get("sources"):
         lines += ["", "SOURCES:"] + [f"  {link}" for link in result["sources"]]
     return "\n".join(lines)

@@ -14,7 +14,7 @@ The AI suggests, this file checks, a human approves. Nothing runs without all th
 
 import re
 
-from app.simulator import Server
+from app.simulator import DAY, Server, minutes_ago
 
 # The only things a fix can do, and the details each one needs.
 # Deleting things is not on the menu at all: freeing space means moving files, which can be undone.
@@ -52,6 +52,12 @@ MAX_MEMORY_MB = 4096
 # Folders inside the database disk that hold the data itself. Moving them breaks PostgreSQL.
 DATABASE_FOLDERS = ["pg_wal", "base", "global", "pg_xact"]
 
+# Containers that keep data on disk. Once a version has run for a while, its data files are in that
+# version's format, and an older version often can't read them (Redis 7.2 can't load the files 7.4
+# writes). So their version may only be changed to undo an upgrade from the last day.
+DATA_CONTAINERS = ["db", "cache"]
+FRESH_UPGRADE_MINUTES = DAY
+
 # Words that must never appear in a fix: they delete data or wipe a database.
 FORBIDDEN = [
     r"\brm\s+-[a-z]*r",       # rm -r, rm -rf
@@ -79,6 +85,23 @@ def touches_protected(server: Server, path: str) -> bool:
                for p in server.protected_paths)
 
 
+def deployed_minutes_ago(server: Server, container: str) -> float | None:
+    """How long ago the version a container runs now was deployed, from the recent changes.
+
+    Looks for the newest change that names the container (or its program) and its current version,
+    like "Upgraded cache from redis 7.2 to 7.4". None if no change mentions it: then it has run
+    since before the change history, which means a long time.
+    """
+    program, _, version = server.containers[container].image.partition(":")
+    names = re.compile(rf"\b({re.escape(container)}|{re.escape(program.split('/')[-1])})\b", re.IGNORECASE)
+    # The exact version on its own: "7.4" must not match inside "7.4.1" or "17.4".
+    exact = re.compile(rf"(?<![\d.]){re.escape(version)}(?![\d.])")
+    times = [moment for moment, text in server.changes if names.search(text) and exact.search(text)]
+    if not times:
+        return None
+    return (minutes_ago(0) - max(times)).total_seconds() / 60
+
+
 def check_action(server: Server, action: dict) -> str | None:
     """Check one action against the menu and the server. Returns the reason it's unsafe, or None if it's OK."""
     kind = action.get("type")
@@ -99,6 +122,15 @@ def check_action(server: Server, action: dict) -> str | None:
             return f"{action['to_image']} is a different program than {current}"
         if action["to_image"] == current:
             return f"{current} is already running"
+        # 22 Oct: after a one-off Redis crash, Ultra rolled the cache back from 7.4 (running for 9 days)
+        # to 7.2. The simulator said FIXED, but on a real server 7.2 can't read 7.4's data files.
+        if action["container"] in DATA_CONTAINERS:
+            age = deployed_minutes_ago(server, action["container"])
+            if age is None or age > FRESH_UPGRADE_MINUTES:
+                since = "since before the change history" if age is None else f"for {age / DAY:.0f} days"
+                return (f"{action['container']} holds data and has run {current} {since}; its data files are "
+                        f"in that version's format, and {action['to_image']} may not be able to read them. "
+                        "Only an upgrade from the last day can be rolled back")
 
     if kind == "set_memory_limit":
         try:

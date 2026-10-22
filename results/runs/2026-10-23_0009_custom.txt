@@ -1,0 +1,240 @@
+Run: custom at 2026-10-23 00:09
+Models: triage=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B, investigator=nvidia/nemotron-3-super-120b-a12b, final_call=nvidia/Nemotron-3-Ultra-550b-a55b, fault_maker=nvidia/Nemotron-3-Ultra-550b-a55b
+
+FAULT FILE: results\custom_faults\2026-10-22_2235.json
+ALERT: The shop homepage loads but product searches fail with 'Service unavailable', and the API health check returns 503.
+
+[TRIAGE (Nano)]
+    {
+      "severity": "critical",
+      "category": "crash",
+      "first_guess": "The API container likely crashed or is unresponsive, causing 503 errors.",
+      "check_first": "Inspect the API container logs and health endpoint metrics."
+    }
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/"})
+
+[RESULT]
+    HTTP 200 in 40 ms
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/api/health"})
+
+[RESULT]
+    HTTP 503 in 8 ms
+
+[TOOL CALL]
+    list_containers({})
+
+[RESULT]
+    NAME    IMAGE               RESTARTS  STATUS
+    web     nginx:1.27          0         Up 12 days
+    api     shopapp/api:2.3.1   0         Up 3 days
+    db      postgres:16         0         Up 12 days
+    cache   redis:7.5           6         Restarting (1) 2 minutes ago
+
+[TOOL CALL]
+    get_logs({"container": "cache", "lines": 30})
+
+[RESULT]
+    2026-10-14 00:09:07 * Ready to accept connections tcp
+    2026-10-22 23:40:07 * Server started, Redis version 7.5.0
+    2026-10-22 23:40:07 * Loading config file /etc/redis/redis.conf
+    2026-10-22 23:40:07 *** FATAL CONFIG FILE ERROR ***
+    2026-10-22 23:40:07 Unknown directive 'maxmemory-policy' at line 17
+    2026-10-22 23:45:07 * Server started, Redis version 7.5.0
+    2026-10-22 23:45:07 * Loading config file /etc/redis/redis.conf
+    2026-10-22 23:45:07 *** FATAL CONFIG FILE ERROR ***
+    2026-10-22 23:45:07 Unknown directive 'maxmemory-policy' at line 17
+    2026-10-22 23:50:07 * Server started, Redis version 7.5.0
+    2026-10-22 23:50:07 * Loading config file /etc/redis/redis.conf
+    2026-10-22 23:50:07 *** FATAL CONFIG FILE ERROR ***
+    2026-10-22 23:50:07 Unknown directive 'maxmemory-policy' at line 17
+    2026-10-22 23:55:07 * Server started, Redis version 7.5.0
+    2026-10-22 23:55:07 * Loading config file /etc/redis/redis.conf
+    2026-10-22 23:55:07 *** FATAL CONFIG FILE ERROR ***
+    2026-10-22 23:55:07 Unknown directive 'maxmemory-policy' at line 17
+    2026-10-23 00:00:07 * Server started, Redis version 7.5.0
+    2026-10-23 00:00:07 * Loading config file /etc/redis/redis.conf
+    2026-10-23 00:00:07 *** FATAL CONFIG FILE ERROR ***
+    2026-10-23 00:00:07 Unknown directive 'maxmemory-policy' at line 17
+    2026-10-23 00:05:07 * Server started, Redis version 7.5.0
+    2026-10-23 00:05:07 * Loading config file /etc/redis/redis.conf
+    2026-10-23 00:05:07 *** FATAL CONFIG FILE ERROR ***
+    2026-10-23 00:05:07 Unknown directive 'maxmemory-policy' at line 17
+    2026-10-23 00:07:07 * Loading config file /etc/redis/redis.conf
+    2026-10-23 00:07:07 * Server started, Redis version 7.5.0
+    2026-10-23 00:07:07 *** FATAL CONFIG FILE ERROR ***
+    2026-10-23 00:07:07 Unknown directive 'maxmemory-policy' at line 17
+
+[TOOL CALL]
+    recent_changes({})
+
+[RESULT]
+    2026-10-22 23:39:07 (30 minutes ago) Deployed cache redis:7.5 (security update)
+    2026-10-20 00:09:07 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+    2026-10-14 00:09:07 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+[TOOL CALL]
+    get_logs({"container": "api", "lines": 20})
+
+[RESULT]
+    2026-10-20 00:09:07 INFO Connected to database db:5432
+    2026-10-20 00:09:07 INFO Connected to cache cache:6379
+    2026-10-22 23:14:07 INFO GET /api/products 200 in 42ms
+    2026-10-22 23:28:07 INFO GET /api/products 200 in 42ms
+    2026-10-22 23:39:07 INFO GET /api/products 200 in 42ms
+    2026-10-22 23:41:07 ERROR GET /api/products 500: Redis connection failed: Connection refused
+    2026-10-22 23:46:07 ERROR GET /api/products 500: Redis connection failed: Connection refused
+    2026-10-22 23:51:07 INFO GET /api/products 200 in 42ms
+    2026-10-22 23:51:07 ERROR GET /api/products 500: Redis connection failed: Connection refused
+    2026-10-22 23:56:07 ERROR GET /api/products 500: Redis connection failed: Connection refused
+    2026-10-23 00:01:07 ERROR GET /api/products 500: Redis connection failed: Connection refused
+    2026-10-23 00:03:07 INFO GET /api/products 200 in 42ms
+    2026-10-23 00:06:07 ERROR GET /api/products 500: Redis connection failed: Connection refused
+    2026-10-23 00:07:07 INFO GET /api/products 200 in 42ms
+    2026-10-23 00:08:07 ERROR GET /api/health 503: cache ping failed: Connection refused
+
+[TOOL CALL]
+    search_web({"query": "Unknown directive 'maxmemory-policy' redis"})
+
+[RESULT]
+    Web results for: Unknown directive 'maxmemory-policy' redis
+    1. Redis: OOM command not allowed when used memory > ‘maxmemory’ · ma.ttias.be
+       https://ma.ttias.be/redis-oom-command-not-allowed-used-memory-maxmemory
+       In the very same Redis config you can find the `maxmemory` directive (somewhere in `/etc/redis/`), there’s also an option called `maxmemory-policy`. The default is: $ grep maxmemory-policy /etc/redis/ $ grep maxmemory-policy /etc/redis/ maxmemory-policy noeviction maxmemory-policy noeviction If you don’t really care about the data in memory, you can change it to something more aggressive, like `allkeys-lru`. [...] $ vim /etc/redis/6903.conf $ vim /etc/redis/6903.conf maxmemory-policy allkeys-lru...
+    2. Redis Cache Eviction Strategies
+       https://medium.com/@srujana.dakoju/redis-cache-eviction-strategies-b806c67e37c0
+       Edit the _redis.conf_ file and set the _maxmemory-policy_ directive: maxmemory-policy allkeys-lru Runtime Configuration Use the _CONFIG SET_ command to set the _maxmemory-policy_ directive: redis-cli CONFIG SET maxmemory-policy allkeys-lru Implementation of the strategies 1. noevictionWhen _noeviction_ is set, Redis will reject write operations with an error when the memory limit is reached. [...] Evicts the least recently used keys with an expiration set when the memory limit is reached. redis-...
+    3. Redis configuration | Docs
+       https://redis.io/docs/latest/operate/oss_and_stack/management/config
+       If you plan to use Redis as a cache where every key will have an expire set, you may consider using the following configuration instead (assuming a max memory limit of 2 megabytes as an example): maxmemory 2mb maxmemory-policy allkeys-lru
+
+[REPORT (Super)]
+    
+    
+    **What do users see?**  
+    - The shop homepage (`http://localhost/`) loads successfully (HTTP 200).  
+    - Product searches and the API health check (`http://localhost/api/health`) return **503 Service Unavailable**.
+    
+    **Where is it broken?**  
+    - The `cache` container is repeatedly restarting (status: *Restarting*).  
+    - The `api` container logs show “Redis connection failed: Connection refused” and ultimately a 503 when trying to reach the cache.  
+    - Other containers (`web`, `db`) are healthy and running.
+    
+    **What exactly is wrong?**  
+    - The `cache` container fails to start because its Redis configuration contains an unknown directive `maxmemory-policy` (see cache logs: *“Unknown directive 'maxmemory-policy' at line 17”*).  
+    - This causes the Redis server to exit immediately, leading to constant restarts.  
+    - As a result, the API cannot connect to Redis, returns 500/503 errors, and product searches fail.
+    
+    **Why did it happen?**  
+    - At **2026-10-22 23:39:07** (≈30 minutes ago) a security update deployed the `cache` container from `redis:7.4` to `redis:7.5` (see `recent_changes`).  
+    - The new Redis 7.5 image expects a different configuration format, but the mounted `/etc/redis/redis.conf` still contains the deprecated/invalid `maxmemory-policy` directive.  
+    - The first error in the cache logs appears at **2026-10-22 23:40:07**, just seconds after the deploy, triggering the restart loop.  
+    - The API logs begin showing Redis connection failures at **2026-10-22 23:41:07**, directly following the cache startup failure, leading to the 503 responses users observe.
+    
+    **How to fix it?**  
+    - **Quick fix:** Roll back the `cache` container to the previous known‑good image (`redis:7.4`) or temporarily disable the custom config until a valid `redis.conf` is provided. This can be done by redeploying the earlier image (undo the recent change).  
+    - **How to check it worked:** After rolling back, verify that the `cache` container shows `Up` status, that `docker logs cache` no longer contains the “Unknown directive” error, and that the API health check returns HTTP 200. Product searches should then succeed.  
+    - **Long‑term fix:** Update the Redis configuration file to be compatible with Redis 7.5 (e.g., ensure `maxmemory-policy` is a valid directive or remove it if unnecessary) before deploying the new image, or pin the cache service to a specific stable version until the config is validated.
+    
+    **Sources**  
+    - https://ma.ttias.be/redis-oom-command-not-allowed-used-memory-maxmemory  
+    - https://medium.com/@srujana.dakoju/redis-cache-eviction-strategies-b806c67e37c0  
+    - https://redis.io/docs/latest/operate/oss_and_stack/management/config
+
+[FINAL CALL (Ultra)]
+    ROOT CAUSE (high confidence, agrees with the investigator):
+      The cache container was upgraded from redis:7.4 to redis:7.5, but the mounted configuration file /etc/redis/redis.conf still contains the directive 'maxmemory-policy' which is unknown in Redis 7.5, causing the Redis server to fail on startup and enter a restart loop.
+    
+    EVIDENCE:
+      - cache logs show 'Unknown directive maxmemory-policy at line 17' immediately after the 2026-10-22 23:39:07 deploy of redis:7.5
+      - cache container status is Restarting with 6 restarts, last 2 minutes ago
+      - api logs show Redis connection refused errors starting at 2026-10-22 23:41:07, leading to 503 responses
+      - recent_changes confirms only the cache image changed 30 minutes ago
+    
+    OPTION 1: Rollback cache to redis:7.4  <- RECOMMENDED
+      steps:
+        1. rollback(container=cache, to_image=redis:7.4)
+      pros:   Restores service immediately with a known-good image that accepts the current config; Removes the root cause (incompatible image) without config changes; Low risk, fully reversible
+      cons:   Loses the security update from redis:7.5 until config is fixed and re-upgraded
+      undo:   rollback cache to redis:7.5 after providing a valid redis.conf
+      can be undone: yes | risk: low
+    
+    WHY: Rollback to redis:7.4 immediately restores the cache service with zero configuration uncertainty, ends the user impact, and removes the root cause (the incompatible image) in a single low-risk step.
+    
+    SOURCES:
+      https://ma.ttias.be/redis-oom-command-not-allowed-used-memory-maxmemory
+      https://medium.com/@srujana.dakoju/redis-cache-eviction-strategies-b806c67e37c0
+      https://redis.io/docs/latest/operate/oss_and_stack/management/config
+
+[SAFETY CHECK]
+    BLOCKED: Move invalid config aside and keep redis:7.5
+      reason: step 1: the files would stay on the same disk
+
+======================================================================
+YOUR DECISION
+    1. Rollback cache to redis:7.4 (recommended)
+    0. Reject all, change nothing
+Picked: 1
+Steps that will run:
+    1. rollback(container=cache, to_image=redis:7.4)
+Answer: yes
+
+DECISION: approved option 1: Rollback cache to redis:7.4 (by pavan at 2026-10-23 00:09:46)
+
+[APPLYING THE FIX]
+    1. rolled back cache to redis:7.4
+
+[AFTER THE FIX]
+    $ df -h
+    Mounted on            Size    Used    Avail   Use%
+    /                     30.0G   11.2G   18.8G   37%
+    /var/lib/postgresql   50.0G   18.4G   31.6G   37%
+    
+    $ docker ps -a
+    NAME    IMAGE               RESTARTS  STATUS
+    web     nginx:1.27          0         Up 12 days
+    api     shopapp/api:2.3.1   0         Up 3 days
+    db      postgres:16         0         Up 12 days
+    cache   redis:7.4           6         Up 0 seconds
+    
+    $ crontab -l
+    NAME         SCHEDULE  ENABLED  LAST RUN          COMMAND
+    rotate-logs  daily     yes      2026-10-22 15:09  logrotate /etc/logrotate.conf
+    
+    $ curl http://localhost/api/health
+    HTTP 200 in 65 ms
+    
+    $ docker logs --tail 3 api
+    2026-10-23 00:08:07 ERROR GET /api/health 503: cache ping failed: Connection refused
+    2026-10-23 00:09:46 INFO GET /api/products 200 in 42ms
+    2026-10-23 00:09:46 INFO GET /api/health 200 in 65ms
+    
+    $ docker logs --tail 3 db
+    2026-10-22 23:35:07 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+    2026-10-23 00:04:07 LOG:  checkpoint starting: time
+    2026-10-23 00:05:07 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+    
+    $ docker logs --tail 3 cache
+    2026-10-23 00:09:46 * Ready to accept connections tcp
+    2026-10-23 00:09:46 * 100 changes in 300 seconds. Saving...
+    2026-10-23 00:09:46 * Background saving terminated with success
+
+[VERDICT]
+    FIXED
+    
+    Users OK?
+      OK  cache runs redis:7.4
+    Stays fixed?
+      OK  cache runs redis:7.4
+
+======================================================================
+HIDDEN TRUTH (the agent never saw this):
+    Fault:      Cache upgrade crashes on startup
+    Idea:       a new redis version for the cache crashes on start
+    Root cause: A deploy upgraded Redis from 7.4 to 7.5; the new version refuses to start because the existing redis.conf uses a removed configuration directive, so the cache container crashes in a restart loop and the API cannot reach it.
+    Fix:        Roll back the cache container to redis:7.4, then verify searches and the API health check recover. Long term: test Redis upgrades in staging with the production config.
+
+COST: 10 model calls, 22.4 s, 25,481 tokens in, 4,588 out (2,539 of them thinking)

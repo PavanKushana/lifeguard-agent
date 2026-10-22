@@ -77,7 +77,7 @@ def check_fault_text(text: str, usage: Usage) -> dict:
 
     reply = ask("triage", [{"role": "system", "content": GUARD_PROMPT},
                            {"role": "user", "content": f"<fault_text>{text}</fault_text>"}],
-                usage, max_tokens=800)
+                usage, max_tokens=2000)
     try:
         result = parse_json(reply.content or "")
     except (ValueError, json.JSONDecodeError):

@@ -176,7 +176,8 @@ def make_fault(idea: str, usage: Usage) -> tuple[dict | None, list[dict]]:
     tries = []
 
     for attempt in range(MAX_TRIES):
-        reply = ask("fault_maker", messages, usage, max_tokens=6000)
+        # 16000: the limit includes Ultra's hidden thinking; at 6000 it was cut off twice (22 Oct).
+        reply = ask("fault_maker", messages, usage, max_tokens=16000)
         text = reply.content or ""
         try:
             fault = parse_json(text)
