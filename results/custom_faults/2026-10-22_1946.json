@@ -1,0 +1,276 @@
+{
+  "title": "API N+1 query storm",
+  "alert": "The shop frontend loads, but product pages take 3-5 seconds to render since this morning.",
+  "truth": {
+    "service": "api",
+    "category": "deploy",
+    "root_cause": "api 2.3.2 introduced an N+1 query pattern in the product listing: it fetches products with one query, then issues a separate query for each product's category and stock, overwhelming the database with thousands of tiny queries per page load.",
+    "fix": "Roll back api to 2.3.1, then verify product pages load in under 100 ms again. Long term: fix the query to use a single JOIN or batch load."
+  },
+  "changes": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.2",
+        "status": "running",
+        "restarts": 1,
+        "since_minutes_ago": 180,
+        "cpu_percent": 25.0,
+        "memory_mb": 250,
+        "memory_limit_mb": 512
+      },
+      "db": {
+        "cpu_percent": 65.0,
+        "memory_mb": 450
+      }
+    },
+    "recent_changes": [
+      [
+        180,
+        "Deployed api 2.3.2 (refactor product listing)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 2500
+      }
+    },
+    "stop_normal_logs": {
+      "api": 180
+    },
+    "logs": {
+      "api": [
+        [
+          175,
+          "INFO Starting shopapp api 2.3.2"
+        ],
+        [
+          170,
+          "INFO GET /api/products 200 in 2840ms"
+        ],
+        [
+          150,
+          "INFO GET /api/products 200 in 3120ms"
+        ],
+        [
+          120,
+          "INFO GET /api/products 200 in 2950ms"
+        ],
+        [
+          90,
+          "INFO GET /api/products 200 in 3300ms"
+        ],
+        [
+          60,
+          "INFO GET /api/products 200 in 2780ms"
+        ],
+        [
+          30,
+          "INFO GET /api/products 200 in 3100ms"
+        ],
+        [
+          10,
+          "INFO GET /api/products 200 in 2920ms"
+        ],
+        [
+          2,
+          "INFO GET /api/products 200 in 3050ms"
+        ]
+      ],
+      "db": [
+        [
+          169,
+          "LOG:  duration: 0.7 ms  statement: SELECT * FROM products WHERE id = 101"
+        ],
+        [
+          169,
+          "LOG:  duration: 0.6 ms  statement: SELECT * FROM categories WHERE id = 5"
+        ],
+        [
+          169,
+          "LOG:  duration: 0.5 ms  statement: SELECT * FROM stock WHERE product_id = 101"
+        ],
+        [
+          169,
+          "LOG:  duration: 0.7 ms  statement: SELECT * FROM products WHERE id = 102"
+        ],
+        [
+          169,
+          "LOG:  duration: 0.6 ms  statement: SELECT * FROM categories WHERE id = 5"
+        ],
+        [
+          169,
+          "LOG:  duration: 0.5 ms  statement: SELECT * FROM stock WHERE product_id = 102"
+        ],
+        [
+          169,
+          "LOG:  duration: 0.7 ms  statement: SELECT * FROM products WHERE id = 103"
+        ],
+        [
+          169,
+          "LOG:  duration: 0.6 ms  statement: SELECT * FROM categories WHERE id = 3"
+        ],
+        [
+          169,
+          "LOG:  duration: 0.5 ms  statement: SELECT * FROM stock WHERE product_id = 103"
+        ],
+        [
+          169,
+          "LOG:  duration: 0.7 ms  statement: SELECT * FROM products WHERE id = 104"
+        ],
+        [
+          149,
+          "LOG:  duration: 0.8 ms  statement: SELECT * FROM products WHERE id = 201"
+        ],
+        [
+          149,
+          "LOG:  duration: 0.6 ms  statement: SELECT * FROM categories WHERE id = 7"
+        ],
+        [
+          149,
+          "LOG:  duration: 0.5 ms  statement: SELECT * FROM stock WHERE product_id = 201"
+        ],
+        [
+          149,
+          "LOG:  duration: 0.7 ms  statement: SELECT * FROM products WHERE id = 202"
+        ],
+        [
+          149,
+          "LOG:  duration: 0.6 ms  statement: SELECT * FROM categories WHERE id = 7"
+        ],
+        [
+          149,
+          "LOG:  duration: 0.5 ms  statement: SELECT * FROM stock WHERE product_id = 202"
+        ],
+        [
+          119,
+          "LOG:  duration: 0.7 ms  statement: SELECT * FROM products WHERE id = 301"
+        ],
+        [
+          119,
+          "LOG:  duration: 0.6 ms  statement: SELECT * FROM categories WHERE id = 2"
+        ],
+        [
+          119,
+          "LOG:  duration: 0.5 ms  statement: SELECT * FROM stock WHERE product_id = 301"
+        ],
+        [
+          89,
+          "LOG:  duration: 0.8 ms  statement: SELECT * FROM products WHERE id = 401"
+        ],
+        [
+          89,
+          "LOG:  duration: 0.6 ms  statement: SELECT * FROM categories WHERE id = 9"
+        ],
+        [
+          89,
+          "LOG:  duration: 0.5 ms  statement: SELECT * FROM stock WHERE product_id = 401"
+        ],
+        [
+          59,
+          "LOG:  duration: 0.7 ms  statement: SELECT * FROM products WHERE id = 501"
+        ],
+        [
+          59,
+          "LOG:  duration: 0.6 ms  statement: SELECT * FROM categories WHERE id = 1"
+        ],
+        [
+          59,
+          "LOG:  duration: 0.5 ms  statement: SELECT * FROM stock WHERE product_id = 501"
+        ],
+        [
+          29,
+          "LOG:  duration: 0.8 ms  statement: SELECT * FROM products WHERE id = 601"
+        ],
+        [
+          29,
+          "LOG:  duration: 0.6 ms  statement: SELECT * FROM categories WHERE id = 4"
+        ],
+        [
+          29,
+          "LOG:  duration: 0.5 ms  statement: SELECT * FROM stock WHERE product_id = 601"
+        ],
+        [
+          9,
+          "LOG:  duration: 0.7 ms  statement: SELECT * FROM products WHERE id = 701"
+        ],
+        [
+          9,
+          "LOG:  duration: 0.6 ms  statement: SELECT * FROM categories WHERE id = 6"
+        ],
+        [
+          9,
+          "LOG:  duration: 0.5 ms  statement: SELECT * FROM stock WHERE product_id = 701"
+        ],
+        [
+          1,
+          "LOG:  duration: 0.8 ms  statement: SELECT * FROM products WHERE id = 801"
+        ],
+        [
+          1,
+          "LOG:  duration: 0.6 ms  statement: SELECT * FROM categories WHERE id = 8"
+        ],
+        [
+          1,
+          "LOG:  duration: 0.5 ms  statement: SELECT * FROM stock WHERE product_id = 801"
+        ]
+      ]
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "api": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "cpu_percent": 4.0,
+        "memory_mb": 180
+      },
+      "db": {
+        "cpu_percent": 3.0,
+        "memory_mb": 320
+      }
+    },
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ],
+      "db": [
+        [
+          0,
+          "LOG:  checkpoint complete: wrote 412 buffers (2.5%)"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "the shop is really slow since this morning"
+}

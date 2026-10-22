@@ -1,0 +1,17 @@
+Fault idea: the shop is really slow since this morning
+
+GUARD: allowed (nano): It's a typical symptom we can investigate, like a slow shop.
+
+Ultra is building the fault...
+
+CHECKS, try 1: 2 problem(s), sent back to Ultra
+  - fixed_when.users_ok needs shopapp/api:2.3.0, but that version appears nowhere the tools can see. Roll back to an image from docker ps or recent changes, or add the deploy that replaced it to recent_changes
+  - fixed_when.stays_fixed needs shopapp/api:2.3.0, but that version appears nowhere the tools can see. Roll back to an image from docker ps or recent changes, or add the deploy that replaced it to recent_changes
+
+CHECKS, try 2: 2 problem(s)
+  - fixed_when.users_ok needs shopapp/api:2.3.0, but that version appears nowhere the tools can see. Roll back to an image from docker ps or recent changes, or add the deploy that replaced it to recent_changes
+  - fixed_when.stays_fixed needs shopapp/api:2.3.0, but that version appears nowhere the tools can see. Roll back to an image from docker ps or recent changes, or add the deploy that replaced it to recent_changes
+
+REJECTED: Ultra couldn't build a fault that passes the checks. On the page: "Couldn't build this fault, please try again or describe it differently."
+
+3 model calls, 102.0 s, 11,306 tokens in, 8,432 out

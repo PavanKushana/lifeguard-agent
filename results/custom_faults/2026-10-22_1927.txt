@@ -1,0 +1,15 @@
+Fault idea: the cache crashed
+
+GUARD: allowed (nano): Allowed: it describes a failure of the Redis cache container on the server.
+
+Ultra is building the fault...
+
+CHECKS, try 1: 1 problem(s), sent back to Ultra
+  - changes.recent_changes: [4320, 'Deployed api 2.3.1 (fix checkout button)'] must be [minutes ago (0-2880), text]
+
+CHECKS, try 2: 1 problem(s)
+  - changes.recent_changes: 'Deployed api 2.3.1 (fix checkout button)' repeats the existing change 'Deployed api 2.3.1 (fix checkout button)'. recent_changes are ADDED to the list; only add new events
+
+REJECTED: Ultra couldn't build a fault that passes the checks. On the page: "Couldn't build this fault, please try again or describe it differently."
+
+3 model calls, 17.4 s, 11,145 tokens in, 4,214 out

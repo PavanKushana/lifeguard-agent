@@ -1,0 +1,22 @@
+Fault idea: a new api deploy has a typo in the database password
+
+GUARD: allowed (nano): This clearly describes a deploy issue that can cause problems on the server, so it's acceptable.
+
+Ultra is building the fault...
+
+CHECKS, try 1: 7 problem(s), sent back to Ultra
+  - changes.logs.web: '2026-10-22 19:03:20 172.18.0.1 - - "GET /products HTTP/1.1" ' starts with its own date; the tools add the time, so leave it out
+  - changes.logs.web: '2026-10-22 19:08:20 172.18.0.1 - - "GET /products HTTP/1.1" ' starts with its own date; the tools add the time, so leave it out
+  - changes.logs.web: '2026-10-22 19:13:20 172.18.0.1 - - "POST /checkout HTTP/1.1"' starts with its own date; the tools add the time, so leave it out
+  - changes.logs.web: '2026-10-22 19:18:20 172.18.0.1 - - "GET /products HTTP/1.1" ' starts with its own date; the tools add the time, so leave it out
+  - changes.logs.web: '2026-10-22 19:23:20 172.18.0.1 - - "GET /products HTTP/1.1" ' starts with its own date; the tools add the time, so leave it out
+  - recovery.logs.web: '2026-10-22 19:28:20 172.18.0.1 - - "GET /products HTTP/1.1" ' starts with its own date; the tools add the time, so leave it out
+  - web: GET /products fails in the new log lines but the normal line '172.18.0.1 - - "GET /products HTTP/1.1" 200 5123' still shows it working; add "stop_normal_logs": {"web": minutes} so the normal lines stop when the problem starts
+
+CHECKS, try 2: 2 problem(s)
+  - 'changes' has unknown keys ['changes.logs', 'recovery.logs'] (allowed: containers, disks, endpoints, files, jobs, logs, recent_changes, stop_normal_logs)
+  - 'recovery' has unknown keys ['changes.logs', 'recovery.logs'] (allowed: containers, disks, endpoints, files, jobs, logs, recent_changes, stop_normal_logs)
+
+REJECTED: Ultra couldn't build a fault that passes the checks. On the page: "Couldn't build this fault, please try again or describe it differently."
+
+3 model calls, 30.1 s, 11,956 tokens in, 3,865 out

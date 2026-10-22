@@ -3,9 +3,9 @@ try_fault_maker.py
 Type a fault idea, let Ultra build it, and see what the agent's tools would show.
 
 The full path a custom fault takes: the guard checks the text, Ultra builds the fault,
-then it's loaded into a fresh server. Nothing is checked in code yet (that's the validator,
-step 3), so read the result by eye: is the alert free of the cause, are the clues there,
-do the times fit, can our 5 actions fix it?
+the validator checks it (and sends problems back to Ultra once), then it's loaded into a
+fresh server. The code checks what it can; still read the story by eye: is the alert free
+of the cause, do the clues make sense?
 
 Saved to results/custom_faults/<date>_<time>.txt (everything shown) and .json (the fault itself).
 
@@ -49,22 +49,31 @@ def main() -> None:
     fault = None
     if verdict["allowed"]:
         say("\nUltra is building the fault...")
-        fault = make_fault(idea, usage)
+        fault, tries = make_fault(idea, usage)
+        for number, attempt in enumerate(tries, start=1):
+            if attempt["cleaned"]:
+                say(f"\nCLEANED, try {number} (fixed in code, not sent back):")
+                say("\n".join(f"  - {note}" for note in attempt["cleaned"]))
+            problems = attempt["problems"]
+            if problems:
+                # Every try except the last one with problems was followed by a correction.
+                sent_back = ", sent back to Ultra" if number < len(tries) else ""
+                say(f"\nCHECKS, try {number}: {len(problems)} problem(s){sent_back}")
+                say("\n".join(f"  - {problem}" for problem in problems))
+            else:
+                say(f"\nCHECKS, try {number}: all passed")
+
         if fault is None:
-            say("Ultra's reply could not be read as JSON, even after one retry.")
+            say("\nREJECTED: Ultra couldn't build a fault that passes the checks. On the page: "
+                "\"Couldn't build this fault, please try again or describe it differently.\"")
         else:
             say("\nTHE FAULT (hidden from the agent, except the alert):\n" + json.dumps(fault, indent=2))
+            # The validator already loaded and tested it, so this can't fail.
             server = Server()
-            try:
-                apply_fault(server, fault)
-            except Exception as error:
-                # Anything can be wrong in AI-written data. The validator (step 3) will catch these
-                # before loading; for now we just want to see what went wrong.
-                say(f"\nCOULD NOT LOAD IT INTO THE SERVER: {type(error).__name__}: {error}")
-            else:
-                say(f"\nWHAT THE AGENT WILL SEE\nAlert: {fault.get('alert')}")
-                for command, output in snapshot(server):
-                    say(f"\n$ {command}\n{output}")
+            apply_fault(server, fault)
+            say(f"\nWHAT THE AGENT WILL SEE\nAlert: {fault['alert']}")
+            for command, output in snapshot(server):
+                say(f"\n$ {command}\n{output}")
 
     say(f"\n{usage.summary()}")
 

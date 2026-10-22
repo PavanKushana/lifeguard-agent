@@ -1,0 +1,283 @@
+Fault idea: the cache crashed
+
+GUARD: allowed (nano): The issue describes a problem (cache crash) that can happen on this Redis server.
+
+Ultra is building the fault...
+
+CHECKS, try 1: all passed
+
+THE FAULT (hidden from the agent, except the alert):
+{
+  "title": "Redis cache crashes repeatedly",
+  "alert": "Product pages load slowly or show 'Service unavailable' errors; the cache container has restarted several times in the last half hour.",
+  "truth": {
+    "service": "cache",
+    "category": "crash",
+    "root_cause": "api 2.3.2 introduced a new Lua script for atomic cart updates that triggers a segmentation fault in Redis 7.4, causing the cache to crash and restart every few minutes under load.",
+    "fix": "Roll back api to 2.3.1, then verify the cache stays up and product pages respond normally. Long term: fix the Lua script or upgrade Redis past the bug."
+  },
+  "changes": {
+    "containers": {
+      "cache": {
+        "status": "running",
+        "restarts": 3,
+        "since_minutes_ago": 4,
+        "exit_code": 139,
+        "cpu_percent": 12.0,
+        "memory_mb": 45,
+        "memory_limit_mb": 256
+      },
+      "api": {
+        "image": "shopapp/api:2.3.2",
+        "since_minutes_ago": 30
+      }
+    },
+    "recent_changes": [
+      [
+        30,
+        "Deployed api 2.3.2 (atomic cart updates with Lua script)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "cache": [
+        [
+          28,
+          "* Redis 7.4 crashed by signal: 11"
+        ],
+        [
+          28,
+          "* Stack trace: ... lua_call_function -> lua_pcall -> lua_resume -> lua_yield -> ..."
+        ],
+        [
+          28,
+          "* Received signal 11: Segmentation fault"
+        ],
+        [
+          27,
+          "* Ready to accept connections tcp"
+        ],
+        [
+          16,
+          "* Redis 7.4 crashed by signal: 11"
+        ],
+        [
+          16,
+          "* Stack trace: ... lua_call_function -> lua_pcall -> lua_resume -> lua_yield -> ..."
+        ],
+        [
+          16,
+          "* Received signal 11: Segmentation fault"
+        ],
+        [
+          15,
+          "* Ready to accept connections tcp"
+        ],
+        [
+          4,
+          "* Redis 7.4 crashed by signal: 11"
+        ],
+        [
+          4,
+          "* Stack trace: ... lua_call_function -> lua_pcall -> lua_resume -> lua_yield -> ..."
+        ],
+        [
+          4,
+          "* Received signal 11: Segmentation fault"
+        ],
+        [
+          3,
+          "* Ready to accept connections tcp"
+        ]
+      ],
+      "api": [
+        [
+          30,
+          "INFO Starting shopapp api 2.3.2"
+        ],
+        [
+          28,
+          "ERROR GET /api/products 500: connection to cache:6379 refused"
+        ],
+        [
+          27,
+          "INFO POST /api/cart 201 in 58ms"
+        ],
+        [
+          16,
+          "ERROR GET /api/products 500: connection to cache:6379 refused"
+        ],
+        [
+          15,
+          "INFO POST /api/cart 201 in 55ms"
+        ],
+        [
+          4,
+          "ERROR GET /api/products 500: connection to cache:6379 refused"
+        ],
+        [
+          3,
+          "INFO POST /api/cart 201 in 60ms"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "cache": 28
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "cache": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "restarts": 0,
+        "cpu_percent": 0.8,
+        "memory_mb": 60
+      },
+      "api": {
+        "image": "shopapp/api:2.3.1",
+        "since_minutes_ago": 0
+      }
+    },
+    "logs": {
+      "cache": [
+        [
+          0,
+          "* Ready to accept connections tcp"
+        ]
+      ],
+      "api": [
+        [
+          0,
+          "INFO Starting shopapp api 2.3.1"
+        ],
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "the cache crashed"
+}
+
+WHAT THE AGENT WILL SEE
+Alert: Product pages load slowly or show 'Service unavailable' errors; the cache container has restarted several times in the last half hour.
+
+$ docker ps -a
+NAME    IMAGE               RESTARTS  STATUS
+web     nginx:1.27          0         Up 12 days
+api     shopapp/api:2.3.2   0         Up 30 minutes
+db      postgres:16         0         Up 12 days
+cache   redis:7.4           3         Up 4 minutes
+
+$ docker stats --no-stream
+NAME    CPU %   MEM USAGE / LIMIT     MEM %
+web     0.5     25MiB / 256MiB        10%
+api     4.0     180MiB / 512MiB       35%
+db      3.0     320MiB / 1024MiB      31%
+cache   12.0    45MiB / 256MiB        18%
+
+$ df -h
+Mounted on            Size    Used    Avail   Use%
+/                     30.0G   11.2G   18.8G   37%
+/var/lib/postgresql   50.0G   18.4G   31.6G   37%
+
+$ du -xsh --time /*
+9.3G    2026-10-22 19:32  /var
+1.9G    2026-09-22 19:42  /usr
+11.2G                     total
+
+$ du -xsh --time /var/lib/postgresql/*
+18.4G   2026-10-22 19:40  /var/lib/postgresql/data
+18.4G                     total
+
+$ crontab -l
+NAME         SCHEDULE  ENABLED  LAST RUN          COMMAND
+rotate-logs  daily     yes      2026-10-22 10:42  logrotate /etc/logrotate.conf
+
+$ recent changes
+2026-10-22 19:12:53 (30 minutes ago) Deployed api 2.3.2 (atomic cart updates with Lua script)
+2026-10-19 19:42:53 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+2026-10-13 19:42:53 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+$ curl http://localhost/
+HTTP 200 in 40 ms
+
+$ curl http://localhost/api/health
+HTTP 200 in 65 ms
+
+$ docker logs --tail 15 web
+2026-10-22 18:47:53 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 19:01:53 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 19:12:53 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 19:24:53 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 19:36:53 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 19:40:53 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+
+$ docker logs --tail 15 api
+2026-10-19 19:42:53 INFO Connected to database db:5432
+2026-10-19 19:42:53 INFO Connected to cache cache:6379
+2026-10-22 18:47:53 INFO GET /api/products 200 in 42ms
+2026-10-22 19:01:53 INFO GET /api/products 200 in 42ms
+2026-10-22 19:12:53 INFO GET /api/products 200 in 42ms
+2026-10-22 19:12:53 INFO Starting shopapp api 2.3.2
+2026-10-22 19:14:53 ERROR GET /api/products 500: connection to cache:6379 refused
+2026-10-22 19:15:53 INFO POST /api/cart 201 in 58ms
+2026-10-22 19:24:53 INFO GET /api/products 200 in 42ms
+2026-10-22 19:26:53 ERROR GET /api/products 500: connection to cache:6379 refused
+2026-10-22 19:27:53 INFO POST /api/cart 201 in 55ms
+2026-10-22 19:36:53 INFO GET /api/products 200 in 42ms
+2026-10-22 19:38:53 ERROR GET /api/products 500: connection to cache:6379 refused
+2026-10-22 19:39:53 INFO POST /api/cart 201 in 60ms
+2026-10-22 19:40:53 INFO GET /api/products 200 in 42ms
+
+$ docker logs --tail 15 db
+2026-10-10 19:42:53 LOG:  database system is ready to accept connections
+2026-10-22 19:07:53 LOG:  checkpoint starting: time
+2026-10-22 19:08:53 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+2026-10-22 19:37:53 LOG:  checkpoint starting: time
+2026-10-22 19:38:53 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+
+$ docker logs --tail 15 cache
+2026-10-13 19:42:53 * Ready to accept connections tcp
+2026-10-22 19:14:53 * Redis 7.4 crashed by signal: 11
+2026-10-22 19:14:53 * Stack trace: ... lua_call_function -> lua_pcall -> lua_resume -> lua_yield -> ...
+2026-10-22 19:14:53 * Received signal 11: Segmentation fault
+2026-10-22 19:15:53 * Ready to accept connections tcp
+2026-10-22 19:26:53 * Redis 7.4 crashed by signal: 11
+2026-10-22 19:26:53 * Stack trace: ... lua_call_function -> lua_pcall -> lua_resume -> lua_yield -> ...
+2026-10-22 19:26:53 * Received signal 11: Segmentation fault
+2026-10-22 19:27:53 * Ready to accept connections tcp
+2026-10-22 19:38:53 * Redis 7.4 crashed by signal: 11
+2026-10-22 19:38:53 * Stack trace: ... lua_call_function -> lua_pcall -> lua_resume -> lua_yield -> ...
+2026-10-22 19:38:53 * Received signal 11: Segmentation fault
+2026-10-22 19:39:53 * Ready to accept connections tcp
+
+2 model calls, 93.6 s, 5,204 tokens in, 2,733 out

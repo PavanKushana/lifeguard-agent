@@ -12,7 +12,8 @@ the tools themselves, the fix actions from safety.py, the examples from faults.p
 those change, the prompt changes with them.
 
 The typed text has already passed the guard (guard.py). Ultra is told again to treat it as
-data only: the second layer. The validator (step 3) is the third.
+data only: the second layer. The validator (validator.py) is the third: it checks Ultra's fault
+in code, and if something is wrong, Ultra gets the list of problems and one more try.
 """
 
 import json
@@ -22,11 +23,20 @@ from app.faults import DB_OUT_OF_MEMORY, DISK_FULL
 from app.llm import Usage, ask
 from app.simulator import Server
 from app.tools import snapshot
+from app.validator import clean_fault, next_version, validate_fault
+
+# The first try plus one correction. A third try rarely helps and costs another 10-25 s of waiting.
+MAX_TRIES = 2
 
 
 def healthy_board() -> str:
     """What every tool shows on a healthy server: the starting point Ultra builds the fault on."""
     return "\n\n".join(f"$ {command}\n{output}" for command, output in snapshot(Server(), log_lines=5))
+
+
+def running_versions() -> str:
+    """The image each container runs on the healthy server, like 'api shopapp/api:2.3.1'."""
+    return ", ".join(f"{c.name} {c.image}" for c in Server().containers.values())
 
 
 def example(fault: dict) -> str:
@@ -91,11 +101,12 @@ Rules for a fair, realistic fault (like a fair detective story: every clue is th
    Change only what this fault touches; everything else stays healthy.
 6. It must be fixable with 1 to 3 of these actions (the only fixes the investigator can suggest):
 {action_menu()}
-   Everything the fix needs must be visible with the tools: a rollback can only go to an image the
-   container ran before (its image on the healthy server, or one named in recent changes).
-   A bad deploy: give the container a newer image version than now and add the deploy to recent_changes,
-   so a rollback to the image it runs now fixes it. Causes no action can undo (a feature flag, a config
-   edit) only work if they came with a deploy that a rollback removes. A restart alone only fixes a crash for now;
+   Everything the fix needs must be visible with the tools. The versions running now ({running_versions()})
+   have worked fine for days, so they are NOT the bad version, and older versions are unknown.
+   A bad deploy is always a NEW version deployed during the fault: set the container's image to the next
+   version (like {next_version(Server().containers["api"].image)}) and add that deploy to recent_changes;
+   the fix rolls back to the version running now. Causes no action can undo (a feature flag, a config
+   edit) only work if they came with such a new deploy. A restart alone only fixes a crash for now;
    if something keeps causing it, "stays_fixed" must need the action that removes that cause.
 
 {CHANGES_FORMAT}
@@ -115,28 +126,40 @@ Reply with ONLY a JSON object, no other text, with these keys:
 is one of disk, memory, crash, network, config, deploy, other), "changes", "fixed_when", "recovery"."""
 
 
-def make_fault(idea: str, usage: Usage) -> dict | None:
-    """Ask Ultra to build a hidden fault from a person's idea.
+def make_fault(idea: str, usage: Usage) -> tuple[dict | None, list[dict]]:
+    """Ask Ultra to build a hidden fault from a person's idea, cleaned and checked by validator.py.
 
-    Returns the fault in the same shape as the presets, or None if Ultra's reply can't be read.
-    Nothing here checks if the fault makes sense: that's the validator's job (step 3).
+    If the checks find problems, Ultra gets the list and one more try. Returns (fault, tries):
+    the fault in the same shape as the presets, or None if it still failed; and for each try
+    {"cleaned": [...], "problems": [...]} (no problems = that try passed), so the caller can show what happened.
     """
     messages = [{"role": "system", "content": FAULT_MAKER_PROMPT},
                 {"role": "user", "content": f"<fault_idea>{idea}</fault_idea>"}]
+    tries = []
 
-    # Same retry as the final call: Ultra sometimes adds words around the JSON or gets cut off.
-    for attempt in range(2):
+    for attempt in range(MAX_TRIES):
         reply = ask("fault_maker", messages, usage, max_tokens=6000)
+        text = reply.content or ""
         try:
-            fault = parse_json(reply.content or "")
-            break
+            fault = parse_json(text)
+            cleaned = clean_fault(fault)
+            problems = validate_fault(fault)
         except ValueError:
-            messages.append({"role": "assistant", "content": reply.content or ""})
-            messages.append({"role": "user", "content": "That was not valid JSON. Reply with ONLY the JSON object."})
-    else:
-        return None
+            # Ultra sometimes adds words around the JSON or gets cut off.
+            fault, cleaned, problems = None, [], ["the reply was not valid JSON"]
+        tries.append({"cleaned": cleaned, "problems": problems})
 
-    # Set by our code, not by Ultra: marks it as a custom fault and keeps the idea it came from.
-    fault["id"] = "custom"
-    fault["idea"] = idea
-    return fault
+        if not problems:
+            # Set by our code, not by Ultra: marks it as a custom fault and keeps the idea it came from.
+            fault["id"] = "custom"
+            fault["idea"] = idea
+            return fault, tries
+
+        # Like a code review: tell Ultra exactly what failed, and let it correct its own work.
+        # It once sent back only the changed parts, so the message asks for the complete fault.
+        messages.append({"role": "assistant", "content": text})
+        messages.append({"role": "user", "content": "Our checks found these problems:\n- " + "\n- ".join(problems)
+                         + "\nFix all of them. Send the COMPLETE fault again: one JSON object with all 6 keys "
+                           "(title, alert, truth, changes, fixed_when, recovery), not only the parts you changed. "
+                           "No other text."})
+    return None, tries
