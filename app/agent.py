@@ -131,6 +131,7 @@ def investigate(server: Server, alert: str, first_look: dict, usage: Usage, on_s
     tool_calls_used = 0
     searches_used = 0
     reminded_to_search = False
+    asked_for_report = False
     evidence = []
 
     while True:
@@ -151,6 +152,15 @@ def investigate(server: Server, alert: str, first_look: dict, usage: Usage, on_s
             messages.append({"role": "assistant", "content": reply.content or ""})
             messages.append({"role": "user", "content": "You have not used search_web yet. Search the most "
                                                         "important error message once, then write your report again."})
+            continue
+
+        # An empty answer instead of a report (22 Oct, after using all its tool calls): ask once more,
+        # plainly, before giving up. Without a report Ultra has much less to go on.
+        if not reply.tool_calls and not (reply.content or "").strip() and not asked_for_report:
+            asked_for_report = True
+            on_step("rule", "Empty answer instead of a report: asked again for the report.")
+            messages.append({"role": "user", "content": "Your answer was empty. Write your report now, starting "
+                                                        "with ROOT CAUSE:, from the evidence you already have."})
             continue
 
         if not reply.tool_calls:
@@ -249,6 +259,29 @@ def inventory(server: Server) -> str:
     return "\n".join(lines)
 
 
+def missing_parts(result) -> list[str]:
+    """What a final call lacks to be usable: a root cause, fix options with steps, and which one is recommended.
+
+    Valid JSON isn't enough: on 22 Oct Ultra sent a JSON object without any of these,
+    so there was nothing for the human to pick. Returns the problems; empty = usable.
+    """
+    if not isinstance(result, dict):
+        return ["the reply is not a JSON object"]
+    problems = []
+    if not isinstance(result.get("root_cause"), str) or not result["root_cause"].strip():
+        problems.append("root_cause is missing")
+    options = result.get("options")
+    if not isinstance(options, list) or not options:
+        problems.append("options are missing (give 2 or 3)")
+    elif not all(isinstance(option, dict) and isinstance(option.get("steps"), list) and option["steps"]
+                 for option in options):
+        problems.append("every option needs a list of steps")
+    # A number, or a number written as text ("1"), which is turned into a number afterwards.
+    if not str(result.get("recommended", "")).strip().isdigit():
+        problems.append("recommended (the number of the recommended option) is missing")
+    return problems
+
+
 def final_call(server: Server, alert: str, report: str, evidence: list, usage: Usage, on_step) -> dict | None:
     """Ask Ultra for the final root cause and 2-3 fix options, then let safety.py check every option.
 
@@ -261,19 +294,35 @@ def final_call(server: Server, alert: str, report: str, evidence: list, usage: U
                                     "Raw tool outputs:\n\n" + "\n\n".join(evidence)},
     ]
 
-    # Ultra sometimes adds words around the JSON or gets cut off; one retry fixes most of that.
-    result = None
+    # Ultra sometimes adds words around the JSON, gets cut off, or (22 Oct) sends valid JSON
+    # without the parts we need. Both get one retry that says exactly what was wrong.
+    result, text = None, ""
     for attempt in range(2):
         reply = ask("final_call", messages, usage, max_tokens=3000)
+        text = reply.content or ""
         try:
-            result = parse_json(reply.content or "")
-            break
+            parsed = parse_json(text)
+            problems = missing_parts(parsed)
         except ValueError:
-            messages.append({"role": "assistant", "content": reply.content or ""})
-            messages.append({"role": "user", "content": "That was not valid JSON. Reply with ONLY the JSON object."})
+            parsed, problems = None, ["it was not valid JSON"]
+        if not problems:
+            result = parsed
+            break
+        if attempt == 1:
+            break
+        on_step("rule", f"Final call not usable ({'; '.join(problems)}), so Ultra was asked again.")
+        messages.append({"role": "assistant", "content": text})
+        messages.append({"role": "user", "content": f"Your reply can't be used: {'; '.join(problems)}. "
+                         "Reply with ONLY the complete JSON object in the format given: root_cause, confidence, "
+                         "agrees_with_investigator, evidence, options (2 or 3, each with steps), recommended, "
+                         "why_recommended, sources."})
     if result is None:
-        on_step("final_call", "Ultra's reply could not be read as JSON. Use the investigator's report above.")
+        # Show what Ultra really wrote, so a failure can be understood instead of guessed.
+        on_step("final_call", "Ultra's final call could not be used, even after one retry. "
+                              "Use the investigator's report above.\nStart of Ultra's reply:\n"
+                + (text[:600] or "(empty)"))
         return None
+    result["recommended"] = int(result["recommended"])
 
     # Mark the recommended option BEFORE the safety check, because blocked options shift the numbers.
     options = result.get("options", [])

@@ -87,7 +87,7 @@ def check_folder_sizes(server: Server, path: str) -> str:
     items = server.items_under(path)
     if server.disk_of(path) is None or not items:
         return f"du: cannot access '{path}': No such file or directory"
-    if path in items:
+    if path in items and len(items) == 1:
         # PATH is one file (or a folder we only know as a whole): show just that line.
         item = items[path]
         return f"{gb(item.size_gb):<8}{item.modified:%Y-%m-%d %H:%M}  {path}"
@@ -96,7 +96,13 @@ def check_folder_sizes(server: Server, path: str) -> str:
     prefix = "/" if path == "/" else path + "/"
     groups = {}
     for item_path, item in items.items():
-        child = prefix + item_path[len(prefix):].split("/")[0]
+        if item_path == path:
+            # A folder we know as a whole (like the healthy /var/log, 0.4 GB) that ALSO has a fault's
+            # file inside it. Before 22 Oct only the whole was shown and the file stayed hidden, so
+            # "du /var" and "du /var/log" disagreed and the agent got lost looking for the space.
+            child = prefix + "(other files)"
+        else:
+            child = prefix + item_path[len(prefix):].split("/")[0]
         size, newest = groups.get(child, (0.0, item.modified))
         groups[child] = (size + item.size_gb, max(newest, item.modified))
 
@@ -108,11 +114,15 @@ def check_folder_sizes(server: Server, path: str) -> str:
 
 def list_jobs(server: Server) -> str:
     """Like 'crontab -l', but as a table: every scheduled job, whether it's on, when it last ran."""
-    lines = [f"{'NAME':<13}{'SCHEDULE':<10}{'ENABLED':<9}{'LAST RUN':<18}COMMAND"]
+    # Columns as wide as the longest value, so a custom job like "collect-debug-logs" with
+    # "every 10 minutes" doesn't run into the next column.
+    name_width = max([len("NAME")] + [len(job.name) for job in server.jobs.values()]) + 2
+    schedule_width = max([len("SCHEDULE")] + [len(job.schedule) for job in server.jobs.values()]) + 2
+    lines = [f"{'NAME':<{name_width}}{'SCHEDULE':<{schedule_width}}{'ENABLED':<9}{'LAST RUN':<18}COMMAND"]
     for job in server.jobs.values():
         last_run = f"{job.last_run:%Y-%m-%d %H:%M}" if job.last_run else "never"
-        lines.append(f"{job.name:<13}{job.schedule:<10}{'yes' if job.enabled else 'no':<9}"
-                     f"{last_run:<18}{job.command}")
+        lines.append(f"{job.name:<{name_width}}{job.schedule:<{schedule_width}}"
+                     f"{'yes' if job.enabled else 'no':<9}{last_run:<18}{job.command}")
     return "\n".join(lines)
 
 

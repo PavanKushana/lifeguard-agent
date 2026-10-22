@@ -131,7 +131,8 @@ def make_fault(idea: str, usage: Usage) -> tuple[dict | None, list[dict]]:
 
     If the checks find problems, Ultra gets the list and one more try. Returns (fault, tries):
     the fault in the same shape as the presets, or None if it still failed; and for each try
-    {"cleaned": [...], "problems": [...]} (no problems = that try passed), so the caller can show what happened.
+    {"cleaned": [...], "problems": [...], "fault": what Ultra wrote} (no problems = that try passed),
+    so the caller can show what happened and keep a rejected fault for a closer look.
     """
     messages = [{"role": "system", "content": FAULT_MAKER_PROMPT},
                 {"role": "user", "content": f"<fault_idea>{idea}</fault_idea>"}]
@@ -147,7 +148,8 @@ def make_fault(idea: str, usage: Usage) -> tuple[dict | None, list[dict]]:
         except ValueError:
             # Ultra sometimes adds words around the JSON or gets cut off.
             fault, cleaned, problems = None, [], ["the reply was not valid JSON"]
-        tries.append({"cleaned": cleaned, "problems": problems})
+        # The fault is kept too, so a rejected one can be saved and looked at instead of guessed.
+        tries.append({"cleaned": cleaned, "problems": problems, "fault": fault})
 
         if not problems:
             # Set by our code, not by Ultra: marks it as a custom fault and keeps the idea it came from.

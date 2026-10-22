@@ -82,6 +82,11 @@ def main() -> None:
     path.with_suffix(".txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     if fault:
         path.with_suffix(".json").write_text(json.dumps(fault, indent=2) + "\n", encoding="utf-8")
+    elif verdict["allowed"] and tries and tries[-1]["fault"] is not None:
+        # Rejected: keep Ultra's last version, so we can see what went wrong.
+        rejected = path.with_name(path.name + "_rejected.json")
+        rejected.write_text(json.dumps(tries[-1]["fault"], indent=2) + "\n", encoding="utf-8")
+        print(f"Ultra's last version saved to {rejected}")
     print(f"Saved to {path}.txt")
 
 

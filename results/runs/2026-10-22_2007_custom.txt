@@ -1,0 +1,9 @@
+Run: custom at 2026-10-22 20:07
+Models: triage=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B, investigator=nvidia/nemotron-3-super-120b-a12b, final_call=nvidia/Nemotron-3-Ultra-550b-a55b, fault_maker=nvidia/Nemotron-3-Ultra-550b-a55b
+
+FAULT IDEA: a cron job fills the log folder until the disk is full
+Building the fault (Ultra), this can take a minute...
+    try 1: 1 problem(s)
+    try 2: 5 problem(s), 4 fixed in code
+    building cost: 3 model calls, 67.7 s, 16,084 tokens in, 8,672 out
+Couldn't build this fault, please try again or describe it differently.
