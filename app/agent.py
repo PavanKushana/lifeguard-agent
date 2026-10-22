@@ -298,13 +298,18 @@ def final_call(server: Server, alert: str, report: str, evidence: list, usage: U
     # without the parts we need. Both get one retry that says exactly what was wrong.
     result, text = None, ""
     for attempt in range(2):
-        reply = ask("final_call", messages, usage, max_tokens=3000)
+        # 6000, not 3000: on 22 Oct two runs in a row needed the retry for "not valid JSON",
+        # maybe cut off. Room is free: we only pay for the tokens Ultra really writes.
+        reply = ask("final_call", messages, usage, max_tokens=6000)
         text = reply.content or ""
         try:
             parsed = parse_json(text)
             problems = missing_parts(parsed)
         except ValueError:
             parsed, problems = None, ["it was not valid JSON"]
+        if problems and usage.last_finish == "length":
+            # Tells us (and Ultra) the real reason, so we know whether more room or a shorter answer is needed.
+            problems.append("it was cut off at the token limit, so keep every text short")
         if not problems:
             result = parsed
             break

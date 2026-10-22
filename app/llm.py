@@ -45,6 +45,9 @@ class Usage:
     seconds: float = 0.0
     tokens_in: int = 0
     tokens_out: int = 0
+    # Why the newest reply ended: "stop" (finished) or "length" (cut off at max_tokens).
+    # Kept so a broken reply can say whether it was cut off, instead of us guessing.
+    last_finish: str = ""
 
     def summary(self) -> str:
         """One line like '5 model calls, 12.3 s, 4,210 tokens in, 1,180 out'."""
@@ -55,7 +58,8 @@ class Usage:
 def ask(job: str, messages: list, usage: Usage, tools: list | None = None, max_tokens: int = 1500):
     """Send the conversation to the model for this job (a key of MODELS, e.g. 'triage' or 'final_call').
 
-    Adds the time and tokens to `usage` and returns the model's reply message.
+    Adds the time and tokens to `usage`, notes why the reply ended (usage.last_finish)
+    and returns the model's reply message.
     """
     options = {"model": MODELS[job], "messages": messages, "max_tokens": max_tokens}
     if tools:
@@ -69,4 +73,5 @@ def ask(job: str, messages: list, usage: Usage, tools: list | None = None, max_t
     if response.usage:  # token counts, which is what we pay for
         usage.tokens_in += response.usage.prompt_tokens
         usage.tokens_out += response.usage.completion_tokens
+    usage.last_finish = response.choices[0].finish_reason or ""
     return response.choices[0].message
