@@ -282,21 +282,14 @@ def missing_parts(result) -> list[str]:
     return problems
 
 
-def final_call(server: Server, alert: str, report: str, evidence: list, usage: Usage, on_step) -> dict | None:
-    """Ask Ultra for the final root cause and 2-3 fix options, then let safety.py check every option.
+def ask_final_call(messages: list, usage: Usage, on_step) -> tuple[dict | None, str]:
+    """Ask Ultra for a final call and read it. Returns (final call, Ultra's raw text); None if unusable.
 
-    Returns the final call as a dict (with only safe options), or None if Ultra's reply can't be read.
+    Ultra sometimes adds words around the JSON, gets cut off, or (22 Oct) sends valid JSON
+    without the parts we need. Both get one retry that says exactly what was wrong.
+    The conversation in `messages` grows with every retry, so a later question can build on it.
     """
-    messages = [
-        {"role": "system", "content": FINAL_CALL_PROMPT},
-        {"role": "user", "content": f"Alert: {alert}\n\n{inventory(server)}\n\n"
-                                    f"Investigator's report:\n{report}\n\n"
-                                    "Raw tool outputs:\n\n" + "\n\n".join(evidence)},
-    ]
-
-    # Ultra sometimes adds words around the JSON, gets cut off, or (22 Oct) sends valid JSON
-    # without the parts we need. Both get one retry that says exactly what was wrong.
-    result, text = None, ""
+    text = ""
     for attempt in range(2):
         # 6000, not 3000: on 22 Oct two runs in a row needed the retry for "not valid JSON",
         # maybe cut off. Room is free: we only pay for the tokens Ultra really writes.
@@ -311,8 +304,11 @@ def final_call(server: Server, alert: str, report: str, evidence: list, usage: U
             # Tells us (and Ultra) the real reason, so we know whether more room or a shorter answer is needed.
             problems.append("it was cut off at the token limit, so keep every text short")
         if not problems:
-            result = parsed
-            break
+            parsed["recommended"] = int(parsed["recommended"])
+            # Mark the recommended option BEFORE the safety check, because blocked options shift the numbers.
+            for number, option in enumerate(parsed["options"], start=1):
+                option["recommended"] = number == parsed["recommended"]
+            return parsed, text
         if attempt == 1:
             break
         on_step("rule", f"Final call not usable ({'; '.join(problems)}), so Ultra was asked again.")
@@ -321,20 +317,51 @@ def final_call(server: Server, alert: str, report: str, evidence: list, usage: U
                          "Reply with ONLY the complete JSON object in the format given: root_cause, confidence, "
                          "agrees_with_investigator, evidence, options (2 or 3, each with steps), recommended, "
                          "why_recommended, sources."})
+    return None, text
+
+
+def final_call(server: Server, alert: str, report: str, evidence: list, usage: Usage, on_step) -> dict | None:
+    """Ask Ultra for the final root cause and 2-3 fix options, then let safety.py check every option.
+
+    If safety blocks every option, Ultra hears why and gets one chance to offer safe ones.
+    Returns the final call as a dict (with only safe options), or None if Ultra's reply can't be read.
+    """
+    messages = [
+        {"role": "system", "content": FINAL_CALL_PROMPT},
+        {"role": "user", "content": f"Alert: {alert}\n\n{inventory(server)}\n\n"
+                                    f"Investigator's report:\n{report}\n\n"
+                                    "Raw tool outputs:\n\n" + "\n\n".join(evidence)},
+    ]
+
+    result, text = ask_final_call(messages, usage, on_step)
     if result is None:
         # Show what Ultra really wrote, so a failure can be understood instead of guessed.
         on_step("final_call", "Ultra's final call could not be used, even after one retry. "
                               "Use the investigator's report above.\nStart of Ultra's reply:\n"
                 + (text[:600] or "(empty)"))
         return None
-    result["recommended"] = int(result["recommended"])
+    safe, blocked = check_options(server, result["options"])
+    not_shown = blocked  # blocked options the timeline hasn't shown yet
 
-    # Mark the recommended option BEFORE the safety check, because blocked options shift the numbers.
-    options = result.get("options", [])
-    for number, option in enumerate(options, start=1):
-        option["recommended"] = number == result.get("recommended")
-
-    safe, blocked = check_options(server, options)
+    if not safe:
+        # 22 Oct: both options moved the database's own data folder, safety blocked both, and the
+        # human had nothing to pick. Ultra never heard why. Like the validator does for faults:
+        # send the reasons back once. Safety still checks the new options, so nothing unsafe gets through.
+        for item in blocked:
+            on_step("safety", f"BLOCKED: {item['title']}\n  reason: {item['reason']}")
+        on_step("rule", "Every option was blocked, so Ultra was told why and asked once for safe options.")
+        messages.append({"role": "assistant", "content": text})
+        messages.append({"role": "user", "content": "The safety check blocked every option:\n"
+                         + "\n".join(f"- {item['title']}: {item['reason']}" for item in blocked)
+                         + "\nGive the final call again with 2 or 3 options that avoid these. If no safe action "
+                           "removes the root cause, offer the safe actions that help most, with honest cons. "
+                           "Reply with ONLY the complete JSON object in the format given."})
+        retry, _ = ask_final_call(messages, usage, on_step)
+        not_shown = []
+        if retry is not None:
+            retry_safe, retry_blocked = check_options(server, retry["options"])
+            # Keep every blocked option for the postmortem: the safety net working is part of the story.
+            result, safe, blocked, not_shown = retry, retry_safe, blocked + retry_blocked, retry_blocked
     result["options"], result["blocked"] = safe, blocked
 
     # Same check as for Super's report: only links the search really returned are shown.
@@ -345,9 +372,9 @@ def final_call(server: Server, alert: str, report: str, evidence: list, usage: U
     if source_notes:
         on_step("rule", "Source links in the final call checked against the search results:\n"
                 + "\n".join(f"  - {note}" for note in source_notes))
-    for item in blocked:
+    for item in not_shown:
         on_step("safety", f"BLOCKED: {item['title']}\n  reason: {item['reason']}")
-    if not blocked:
+    if safe and not not_shown:
         on_step("safety", f"All {len(safe)} options passed the safety check.")
     return result
 
