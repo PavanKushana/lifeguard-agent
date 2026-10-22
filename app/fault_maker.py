@@ -17,6 +17,7 @@ in code, and if something is wrong, Ultra gets the list of problems and one more
 """
 
 import json
+import random
 
 from app.agent import action_menu, parse_json
 from app.faults import DB_OUT_OF_MEMORY, DISK_FULL
@@ -87,6 +88,8 @@ Rules for a fair, realistic fault (like a fair detective story: every clue is th
 2. The cause must be findable with the tools: plant clues in logs, container status, metrics,
    disks, files, jobs, recent changes or health checks. The evidence must connect the cause to the
    errors (same service, matching times, a matching error), so a careful engineer could prove it.
+   Every clue fits the truth: no error that points to a different or worse problem than the one your
+   fix solves. If a restart brings a service back, its logs must not show damaged or missing data files.
 3. Log lines look exactly like real nginx, Python app, PostgreSQL 16 or Redis 7.4 logs. Real programs
    report errors, they don't explain them: no log line may say why it happened or name the cause.
    A process killed with signal 9 (out of memory) writes nothing about its own death: show it in
@@ -101,6 +104,8 @@ Rules for a fair, realistic fault (like a fair detective story: every clue is th
    Change only what this fault touches; everything else stays healthy.
 6. It must be fixable with 1 to 3 of these actions (the only fixes the investigator can suggest):
 {action_menu()}
+   So never damaged or corrupted data, broken files, or hardware or filesystem failures: no action
+   on the menu really fixes those, and "restart and hope" is not a fix.
    Everything the fix needs must be visible with the tools. The versions running now ({running_versions()})
    have worked fine for days, so they are NOT the bad version, and older versions are unknown.
    A bad deploy is always a NEW version deployed during the fault: set the container's image to the next
@@ -126,13 +131,45 @@ Reply with ONLY a JSON object, no other text, with these keys:
 is one of disk, memory, crash, network, config, deploy, other), "changes", "fixed_when", "recovery"."""
 
 
+# Ideas for "Surprise me": every kind of problem on every part of the server, each one fixable
+# with the menu. Our code picks one, not Ultra: asked to "invent any fault", Ultra mostly made
+# bad deploys (22 Oct), because a model has favourites. random.choice gives every kind its turn.
+# Each idea says only WHERE and WHAT KIND; Ultra still invents the story, so no two are the same.
+RANDOM_IDEAS = [
+    # memory (fix: set_memory_limit)
+    "the api runs out of memory and keeps getting killed",
+    "the cache runs out of memory and gets killed",
+    # disk (fix: move_files)
+    "the main disk / fills up with big files",
+    "the database disk fills up",
+    # a job (fix: disable_job, plus moving files if it filled a disk)
+    "a scheduled job slowly fills a disk",
+    # bad deploy (fix: rollback to the version running now)
+    "a new api version breaks some pages",
+    "a new api version can't reach the cache or the database",
+    "a new nginx version for web returns errors",
+    "a new redis version for the cache crashes on start",
+    # one-off crash (fix: restart). "No restart policy" says why a restart is the right fix: with
+    # just "crashed and stayed down", Ultra twice made the database files damaged (22 Oct), which
+    # no restart fixes.
+    "the cache was killed once and didn't come back up (it has no restart policy)",
+    "the database was killed once and didn't come back up (it has no restart policy)",
+]
+
+
+def random_idea() -> str:
+    """Pick one idea for "Surprise me". It comes from our own list, so the guard isn't needed."""
+    return random.choice(RANDOM_IDEAS)
+
+
 def make_fault(idea: str, usage: Usage) -> tuple[dict | None, list[dict]]:
     """Ask Ultra to build a hidden fault from a person's idea, cleaned and checked by validator.py.
 
     If the checks find problems, Ultra gets the list and one more try. Returns (fault, tries):
     the fault in the same shape as the presets, or None if it still failed; and for each try
-    {"cleaned": [...], "problems": [...], "fault": what Ultra wrote} (no problems = that try passed),
-    so the caller can show what happened and keep a rejected fault for a closer look.
+    {"cleaned": [...], "problems": [...], "fault": what Ultra wrote, "reply": its raw text}
+    (no problems = that try passed), so the caller can show what happened and keep a rejected
+    fault, or the raw reply if it wasn't JSON, for a closer look.
     """
     messages = [{"role": "system", "content": FAULT_MAKER_PROMPT},
                 {"role": "user", "content": f"<fault_idea>{idea}</fault_idea>"}]
@@ -148,8 +185,12 @@ def make_fault(idea: str, usage: Usage) -> tuple[dict | None, list[dict]]:
         except ValueError:
             # Ultra sometimes adds words around the JSON or gets cut off.
             fault, cleaned, problems = None, [], ["the reply was not valid JSON"]
-        # The fault is kept too, so a rejected one can be saved and looked at instead of guessed.
-        tries.append({"cleaned": cleaned, "problems": problems, "fault": fault})
+        if problems and usage.last_finish == "length":
+            # 22 Oct: two tries in a row ended as "not valid JSON" after about 6000 tokens each.
+            # Saying so tells us (and Ultra) the real reason instead of leaving us guessing.
+            problems.append("it was cut off at the token limit: keep it short, at most 10 log lines per container")
+        # The fault and the raw reply are kept too, so a rejected one can be looked at instead of guessed.
+        tries.append({"cleaned": cleaned, "problems": problems, "fault": fault, "reply": text})
 
         if not problems:
             # Set by our code, not by Ultra: marks it as a custom fault and keeps the idea it came from.

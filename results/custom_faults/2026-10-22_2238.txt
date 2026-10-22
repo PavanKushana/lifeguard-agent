@@ -1,0 +1,269 @@
+Fault idea: the database crashed once and stayed down
+
+GUARD: allowed (nano): That's a plausible fault—PostgreSQL crashing and staying down can definitely happen on the server.
+
+Ultra is building the fault...
+
+CHECKS, try 1: all passed
+
+THE FAULT (hidden from the agent, except the alert):
+{
+  "title": "Database crash during checkpoint",
+  "alert": "The shop homepage loads, but any page needing the database shows 'Service unavailable'. The database container is stopped.",
+  "truth": {
+    "service": "db",
+    "category": "crash",
+    "root_cause": "A data page checksum failure during a checkpoint triggered a PostgreSQL PANIC. Automatic recovery attempted but failed because the corrupted page is in a critical system catalog, leaving the database process exited and unable to start.",
+    "fix": "The database must be restored from a clean backup or the corrupted cluster re-initialized. Since no backup job exists, the only action an engineer can take with the available tools is to restart the container and hope recovery succeeds this time; if it does not, the instance requires manual pg_resetwal or a full restore from outside the toolset."
+  },
+  "changes": {
+    "containers": {
+      "db": {
+        "status": "exited",
+        "exit_code": 1,
+        "restarts": 0,
+        "since_minutes_ago": 15,
+        "cpu_percent": 0.0,
+        "memory_mb": 0,
+        "memory_limit_mb": 1024
+      }
+    },
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 503,
+        "ms": 2
+      }
+    },
+    "logs": {
+      "db": [
+        [
+          15,
+          "LOG:  checkpoint starting: time"
+        ],
+        [
+          14,
+          "PANIC:  could not read block 12345 in file \"base/1262/5.1\": read-only filesystem or corrupted data"
+        ],
+        [
+          14,
+          "HINT:  This may indicate hardware or filesystem problems."
+        ],
+        [
+          14,
+          "LOG:  server process (PID 3124) was terminated by signal 6: Aborted"
+        ],
+        [
+          13,
+          "LOG:  database system was not properly shut down; automatic recovery in progress"
+        ],
+        [
+          12,
+          "LOG:  redo starts at 0/1A2B3C4D"
+        ],
+        [
+          11,
+          "ERROR:  could not read block 12345 in file \"base/1262/5.1\": read-only filesystem or corrupted data"
+        ],
+        [
+          11,
+          "PANIC:  WAL recovery failed: corrupted data at block 12345, cannot continue"
+        ],
+        [
+          11,
+          "LOG:  startup process (PID 3155) exited with exit code 1"
+        ],
+        [
+          10,
+          "LOG:  database system is shut down"
+        ]
+      ],
+      "api": [
+        [
+          14,
+          "ERROR GET /api/products 503: connection to db:5432 refused"
+        ],
+        [
+          13,
+          "ERROR GET /api/products 503: connection to db:5432 refused"
+        ],
+        [
+          12,
+          "ERROR GET /api/products 503: connection to db:5432 refused"
+        ],
+        [
+          10,
+          "ERROR GET /api/products 503: connection to db:5432 refused"
+        ],
+        [
+          8,
+          "ERROR GET /api/products 503: connection to db:5432 refused"
+        ],
+        [
+          5,
+          "ERROR GET /api/products 503: connection to db:5432 refused"
+        ],
+        [
+          2,
+          "ERROR GET /api/products 503: connection to db:5432 refused"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "db": 15
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "container_running",
+          "container": "db"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "container_running",
+          "container": "db"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "db": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "memory_mb": 340,
+        "cpu_percent": 3.0
+      }
+    },
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "db": [
+        [
+          0,
+          "LOG:  database system was not properly shut down; automatic recovery in progress"
+        ],
+        [
+          0,
+          "LOG:  redo starts at 0/1A2B3C4D"
+        ],
+        [
+          0,
+          "LOG:  redo done at 0/1A2B3C80 system usage: CPU: user: 0.02 sys: 0.01"
+        ],
+        [
+          0,
+          "LOG:  database system is ready to accept connections"
+        ]
+      ],
+      "api": [
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "the database crashed once and stayed down"
+}
+
+WHAT THE AGENT WILL SEE
+Alert: The shop homepage loads, but any page needing the database shows 'Service unavailable'. The database container is stopped.
+
+$ docker ps -a
+NAME    IMAGE               RESTARTS  STATUS
+web     nginx:1.27          0         Up 12 days
+api     shopapp/api:2.3.1   0         Up 3 days
+db      postgres:16         0         Exited (1) 15 minutes ago
+cache   redis:7.4           0         Up 9 days
+
+$ docker stats --no-stream
+NAME    CPU %   MEM USAGE / LIMIT     MEM %
+web     0.5     25MiB / 256MiB        10%
+api     4.0     180MiB / 512MiB       35%
+db      0.0     0MiB / 1024MiB        0%
+cache   0.8     60MiB / 256MiB        23%
+
+$ df -h
+Mounted on            Size    Used    Avail   Use%
+/                     30.0G   11.2G   18.8G   37%
+/var/lib/postgresql   50.0G   18.4G   31.6G   37%
+
+$ du -xsh --time /*
+9.3G    2026-10-22 22:28  /var
+1.9G    2026-09-22 22:38  /usr
+11.2G                     total
+
+$ du -xsh --time /var/lib/postgresql/*
+18.4G   2026-10-22 22:36  /var/lib/postgresql/data
+18.4G                     total
+
+$ crontab -l
+NAME         SCHEDULE  ENABLED  LAST RUN          COMMAND
+rotate-logs  daily     yes      2026-10-22 13:38  logrotate /etc/logrotate.conf
+
+$ recent changes
+2026-10-19 22:38:48 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+2026-10-13 22:38:48 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+$ curl http://localhost/
+HTTP 200 in 40 ms
+
+$ curl http://localhost/api/health
+HTTP 503 in 2 ms
+
+$ docker logs --tail 15 web
+2026-10-22 21:43:48 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 21:57:48 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 22:08:48 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 22:20:48 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 22:32:48 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 22:36:48 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+
+$ docker logs --tail 15 api
+2026-10-19 22:38:48 INFO Connected to database db:5432
+2026-10-19 22:38:48 INFO Connected to cache cache:6379
+2026-10-22 21:43:48 INFO GET /api/products 200 in 42ms
+2026-10-22 21:57:48 INFO GET /api/products 200 in 42ms
+2026-10-22 22:08:48 INFO GET /api/products 200 in 42ms
+2026-10-22 22:20:48 INFO GET /api/products 200 in 42ms
+2026-10-22 22:24:48 ERROR GET /api/products 503: connection to db:5432 refused
+2026-10-22 22:25:48 ERROR GET /api/products 503: connection to db:5432 refused
+2026-10-22 22:26:48 ERROR GET /api/products 503: connection to db:5432 refused
+2026-10-22 22:28:48 ERROR GET /api/products 503: connection to db:5432 refused
+2026-10-22 22:30:48 ERROR GET /api/products 503: connection to db:5432 refused
+2026-10-22 22:32:48 INFO GET /api/products 200 in 42ms
+2026-10-22 22:33:48 ERROR GET /api/products 503: connection to db:5432 refused
+2026-10-22 22:36:48 INFO GET /api/products 200 in 42ms
+2026-10-22 22:36:48 ERROR GET /api/products 503: connection to db:5432 refused
+
+$ docker logs --tail 15 db
+2026-10-10 22:38:48 LOG:  database system is ready to accept connections
+2026-10-22 22:03:48 LOG:  checkpoint starting: time
+2026-10-22 22:04:48 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+2026-10-22 22:23:48 LOG:  checkpoint starting: time
+2026-10-22 22:24:48 PANIC:  could not read block 12345 in file "base/1262/5.1": read-only filesystem or corrupted data
+2026-10-22 22:24:48 HINT:  This may indicate hardware or filesystem problems.
+2026-10-22 22:24:48 LOG:  server process (PID 3124) was terminated by signal 6: Aborted
+2026-10-22 22:25:48 LOG:  database system was not properly shut down; automatic recovery in progress
+2026-10-22 22:26:48 LOG:  redo starts at 0/1A2B3C4D
+2026-10-22 22:27:48 ERROR:  could not read block 12345 in file "base/1262/5.1": read-only filesystem or corrupted data
+2026-10-22 22:27:48 PANIC:  WAL recovery failed: corrupted data at block 12345, cannot continue
+2026-10-22 22:27:48 LOG:  startup process (PID 3155) exited with exit code 1
+2026-10-22 22:28:48 LOG:  database system is shut down
+
+$ docker logs --tail 15 cache
+2026-10-13 22:38:48 * Ready to accept connections tcp
+2026-10-22 22:13:48 * 100 changes in 300 seconds. Saving...
+2026-10-22 22:13:48 * Background saving terminated with success
+
+2 model calls, 7.8 s, 5,257 tokens in, 2,108 out

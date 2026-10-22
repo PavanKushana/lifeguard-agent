@@ -1,0 +1,15 @@
+Fault idea: the database was killed once and didn't come back up (it has no restart policy)
+
+GUARD: allowed (nano): It describes a genuine server problem— the database was killed and failed to restart, which is a valid fault.
+
+Ultra is building the fault...
+
+CHECKS, try 1: 1 problem(s), sent back to Ultra
+  - the reply was not valid JSON
+
+CHECKS, try 2: 1 problem(s)
+  - the reply was not valid JSON
+
+REJECTED: Ultra couldn't build a fault that passes the checks. On the page: "Couldn't build this fault, please try again or describe it differently."
+
+3 model calls, 40.5 s, 16,269 tokens in, 12,188 out

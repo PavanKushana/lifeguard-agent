@@ -6,11 +6,13 @@ An approved fix is applied to the fake server, which is then checked: FIXED, FIX
 Last, a postmortem (what happened, why, what fixed it, what's next) is saved to results/incidents/.
 
 The fault can be a preset, a new custom fault built from your text (guard -> Ultra -> checks),
+a random one ("Surprise me": our code picks the idea, Ultra builds it, nobody knows the answer),
 or a custom fault saved earlier (checked again when loaded, in case the file was edited).
 Run from the project folder:
     python -m scripts.run_incident disk_full
     python -m scripts.run_incident db_out_of_memory
     python -m scripts.run_incident --custom "the cache crashed"
+    python -m scripts.run_incident --random
     python -m scripts.run_incident results/custom_faults/2026-10-22_1942.json
 
 At the end it prints the hidden truth next to the agent's report, so you can judge by eye
@@ -27,7 +29,7 @@ from pathlib import Path
 from app import tools
 from app.agent import handle_incident
 from app.approval import approve_option
-from app.fault_maker import make_fault
+from app.fault_maker import make_fault, random_idea
 from app.faults import PRESETS, apply_fault
 from app.fixes import apply_fix, verify
 from app.guard import check_fault_text
@@ -59,6 +61,7 @@ CUSTOM_DIR = Path("results") / "custom_faults"
 USAGE = """Usage:
     python -m scripts.run_incident <preset>                 presets: {presets}
     python -m scripts.run_incident --custom "your fault idea"
+    python -m scripts.run_incident --random
     python -m scripts.run_incident results/custom_faults/<file>.json"""
 
 # Lines of this run, collected so they can be saved to a file at the end.
@@ -96,18 +99,23 @@ def save_run(fault_name: str, started: datetime) -> Path:
     return path
 
 
-def build_custom_fault(idea: str, started: datetime) -> dict | None:
+def build_custom_fault(idea: str, started: datetime, surprise: bool = False) -> dict | None:
     """Guard the text, let Ultra build the fault, check it, and save it. Returns the fault, or None.
 
     Only short lines are shown here: the fault itself stays hidden until the end of the run,
     so the person approving the fix doesn't know the answer either.
+    surprise=True is "Surprise me": the idea came from our own list, so it skips the guard
+    and isn't shown either (it would give away where to look).
     """
     usage = Usage()
-    say(f"FAULT IDEA: {idea}")
-    verdict = check_fault_text(idea, usage)
-    if not verdict["allowed"]:
-        say(f"Refused by the guard ({verdict['checked_by']}): {verdict['reason']}")
-        return None
+    if surprise:
+        say("FAULT IDEA: random, hidden until the end")
+    else:
+        say(f"FAULT IDEA: {idea}")
+        verdict = check_fault_text(idea, usage)
+        if not verdict["allowed"]:
+            say(f"Refused by the guard ({verdict['checked_by']}): {verdict['reason']}")
+            return None
 
     say("Building the fault (Ultra), this can take a minute...")
     fault, tries = make_fault(idea, usage)
@@ -128,6 +136,11 @@ def build_custom_fault(idea: str, started: datetime) -> dict | None:
             path = CUSTOM_DIR / f"{started:%Y-%m-%d_%H%M}_rejected.json"
             path.write_text(json.dumps(tries[-1]["fault"], indent=2) + "\n", encoding="utf-8")
             say(f"\nUltra's last version saved to {path}")
+        elif tries:
+            # Not even JSON: keep Ultra's raw text instead, so we can see whether it was cut off or rambled.
+            path = CUSTOM_DIR / f"{started:%Y-%m-%d_%H%M}_rejected_reply.txt"
+            path.write_text(tries[-1]["reply"], encoding="utf-8")
+            say(f"\nUltra's last raw reply saved to {path}")
         return None
 
     path = CUSTOM_DIR / f"{started:%Y-%m-%d_%H%M}.json"
@@ -160,6 +173,9 @@ def pick_fault(args: list[str], started: datetime) -> tuple[dict, str] | None:
     if len(args) >= 2 and args[0] == "--custom":
         fault = build_custom_fault(" ".join(args[1:]), started)
         return (fault, "custom") if fault else None
+    if args == ["--random"]:
+        fault = build_custom_fault(random_idea(), started, surprise=True)
+        return (fault, "random") if fault else None
     if len(args) == 1 and args[0].endswith(".json"):
         fault = load_saved_fault(Path(args[0]))
         return (fault, "custom") if fault else None
@@ -281,6 +297,9 @@ def main() -> None:
     say("\n" + "=" * 70)
     say("HIDDEN TRUTH (the agent never saw this):")
     say(f"    Fault:      {fault['title']}")
+    if "idea" in fault:
+        # For a random fault this is the first time the picked idea is shown.
+        say(f"    Idea:       {fault['idea']}")
     say(f"    Root cause: {fault['truth']['root_cause']}")
     say(f"    Fix:        {fault['truth']['fix']}")
     say(f"\nCOST: {result['usage'].summary()}")

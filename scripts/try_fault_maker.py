@@ -87,6 +87,11 @@ def main() -> None:
         rejected = path.with_name(path.name + "_rejected.json")
         rejected.write_text(json.dumps(tries[-1]["fault"], indent=2) + "\n", encoding="utf-8")
         print(f"Ultra's last version saved to {rejected}")
+    elif verdict["allowed"] and tries:
+        # Not even JSON: keep Ultra's raw text instead, so we can see whether it was cut off or rambled.
+        rejected = path.with_name(path.name + "_rejected_reply.txt")
+        rejected.write_text(tries[-1]["reply"], encoding="utf-8")
+        print(f"Ultra's last raw reply saved to {rejected}")
     print(f"Saved to {path}.txt")
 
 

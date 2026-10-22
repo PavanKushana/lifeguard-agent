@@ -1,0 +1,141 @@
+{
+  "title": "Database OOM killed, no restart policy",
+  "alert": "The shop website loads but any action that needs the database (login, checkout, product search) fails with 'Service unavailable'.",
+  "truth": {
+    "service": "db",
+    "category": "memory",
+    "root_cause": "A new analytics endpoint in api 2.3.2 ran a massive query that pushed PostgreSQL over its 1 GB memory limit, causing the kernel to OOM-kill it. The database container has no restart policy, so it stayed down.",
+    "fix": "Roll back api to 2.3.1 to remove the heavy query, restart the database container, and verify the shop works again. Long term: optimize the query or increase the database memory limit."
+  },
+  "changes": {
+    "containers": {
+      "db": {
+        "status": "exited",
+        "exit_code": 137,
+        "restarts": 0,
+        "since_minutes_ago": 30
+      },
+      "api": {
+        "image": "shopapp/api:2.3.2",
+        "since_minutes_ago": 60
+      }
+    },
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 40
+      },
+      "http://localhost/api/health": {
+        "status": 503,
+        "ms": 10
+      }
+    },
+    "logs": {
+      "db": [
+        [
+          30,
+          "LOG:  server process (PID 2903) was terminated by signal 9: Killed"
+        ]
+      ],
+      "api": [
+        [
+          60,
+          "INFO Starting shopapp api 2.3.2"
+        ],
+        [
+          35,
+          "INFO GET /api/analytics/report 200 in 1200ms"
+        ],
+        [
+          30,
+          "ERROR GET /api/analytics/report 500: server closed the connection unexpectedly"
+        ],
+        [
+          25,
+          "ERROR GET /api/products 503: connection to db:5432 refused"
+        ],
+        [
+          20,
+          "ERROR GET /api/health 503: connection to db:5432 refused"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "db": 30,
+      "api": 30
+    },
+    "recent_changes": [
+      [
+        60,
+        "Deployed api 2.3.2 (new analytics endpoint)"
+      ]
+    ]
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "container_running",
+          "container": "db"
+        },
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "container_running",
+          "container": "db"
+        },
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "db": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "memory_mb": 340,
+        "cpu_percent": 3.0
+      },
+      "api": {
+        "image": "shopapp/api:2.3.1"
+      }
+    },
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 40
+      },
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "db": [
+        [
+          0,
+          "LOG:  checkpoint complete: wrote 210 buffers (1.3%)"
+        ]
+      ],
+      "api": [
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "the database was killed once and didn't come back up (it has no restart policy)"
+}

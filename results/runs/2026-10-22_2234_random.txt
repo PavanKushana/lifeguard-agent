@@ -1,0 +1,140 @@
+Run: random at 2026-10-22 22:34
+Models: triage=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B, investigator=nvidia/nemotron-3-super-120b-a12b, final_call=nvidia/Nemotron-3-Ultra-550b-a55b, fault_maker=nvidia/Nemotron-3-Ultra-550b-a55b
+
+FAULT IDEA: random, hidden until the end
+Building the fault (Ultra), this can take a minute...
+    try 1: all checks passed
+    building cost: 1 model calls, 9.1 s, 4,784 tokens in, 3,056 out
+Fault saved to results\custom_faults\2026-10-22_2234.json (rerun it with that path).
+
+ALERT: The shop shows 'Service unavailable' errors; the database container has stopped and isn't restarting.
+
+[TRIAGE (Nano)]
+    {
+      "severity": "critical",
+      "category": "crash",
+      "first_guess": "The PostgreSQL container has stopped and isn't restarting, causing service unavailability",
+      "check_first": "the db container's status and logs using docker ps / docker logs db-container"
+    }
+
+[TOOL CALL]
+    list_containers({})
+
+[RESULT]
+    NAME    IMAGE               RESTARTS  STATUS
+    web     nginx:1.27          0         Up 12 days
+    api     shopapp/api:2.3.2   0         Up 1 hour
+    db      postgres:16         0         Exited (137) 50 minutes ago
+    cache   redis:7.4           0         Up 9 days
+
+[TOOL CALL]
+    get_logs({"container": "db", "lines": 50})
+
+[RESULT]
+    2026-10-10 22:34:12 LOG:  database system is ready to accept connections
+    2026-10-22 21:44:12 LOG:  server process (PID 1234) was terminated by signal 9: Killed
+    2026-10-22 21:44:12 DETAIL:  Failed process was running: SELECT * FROM orders o JOIN order_items i ON i.order_id = o.id JOIN products p ON p.id = i.product_id GROUP BY p.category ORDER BY SUM(i.qty) DESC
+    2026-10-22 21:45:12 LOG:  server process (PID 1234) was terminated by signal 9: Killed
+    2026-10-22 21:45:12 LOG:  database system was not properly shut down; automatic recovery in progress
+    2026-10-22 21:45:12 FATAL:  could not open control file "global/pg_control": No such file or directory
+    2026-10-22 21:46:12 LOG:  database system is shut down
+
+[TOOL CALL]
+    get_metrics({})
+
+[RESULT]
+    NAME    CPU %   MEM USAGE / LIMIT     MEM %
+    web     0.5     25MiB / 256MiB        10%
+    api     4.0     180MiB / 512MiB       35%
+    db      0.0     0MiB / 1024MiB        0%
+    cache   0.8     60MiB / 256MiB        23%
+
+[TOOL CALL]
+    check_disk({})
+
+[RESULT]
+    Mounted on            Size    Used    Avail   Use%
+    /                     30.0G   11.2G   18.8G   37%
+    /var/lib/postgresql   50.0G   18.4G   31.6G   37%
+
+[TOOL CALL]
+    recent_changes({})
+
+[RESULT]
+    2026-10-22 21:34:12 (1 hour ago) Deployed api 2.3.2 (new analytics dashboard)
+    2026-10-19 22:34:12 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+    2026-10-13 22:34:12 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+[TOOL CALL]
+    search_web({"query": "could not open control file \"global/pg_control\": No such file or directory"})
+
+[RESULT]
+    Web results for: could not open control file "global/pg_control": No such file or directory
+    1. could not open control file "global/pg_control": Permission ...
+       https://stackoverflow.com/questions/70376992/panic-could-not-open-control-file-global-pg-control-permission-denied
+       If your upgrade is failing with Powershell runas Admin then you would need to check for permissions for Administrators Group on the folder.
+    2. PostgreSQL cannot start after replacing contents inside its ...
+       https://dba.stackexchange.com/questions/40081/postgresql-cannot-start-after-replacing-contents-inside-its-data-folder
+       could not open control file "global/pg_control": Just for the case that anyone has the problem on Windows Server: Giving the group "Network
+    3. pg_control - No such file or directory · Issue #452 · wal-g ...
+       https://github.com/wal-g/wal-g/issues/452
+       I am having the same issue, after fetching the data from the S3 bucket, most of the executable files are missing. Not sure why this happens. On
+
+[REPORT (Super)]
+    
+    ROOT CAUSE: The PostgreSQL container was killed by the OOM killer (signal 9) after a heavy analytics query introduced in the api 2.3.2 deploy exhausted its memory, leaving the data directory in an inconsistent state (missing pg_control) and preventing the DB from restarting.
+    
+    EVIDENCE:
+    - `list_containers` shows db status **Exited (137) 50 minutes ago** (OOM kill exit code).
+    - `get_logs db` contains: “server process (PID 1234) was terminated by signal 9: Killed” and the failing query `SELECT * FROM orders … GROUP BY p.category ORDER BY SUM(i.qty) DESC`.
+    - `recent_changes` shows api 2.3.2 deployed **1 hour ago** (2026-10-22 21:34:12), coinciding with the first OOM log.
+    - `check_disk` shows ample free space (37% used on / and /var/lib/postgresql), ruling out disk‑full as cause.
+    - `get_metrics` shows db memory usage **0MiB / 1024MiB** after the stop, indicating the container is not running.
+    
+    SOURCES:
+    https://stackoverflow.com/questions/70376992/panic-could-not-open-control-file-global-pg-control-permission-denied
+
+[FINAL CALL (Ultra)]
+    ROOT CAUSE (high confidence, agrees with the investigator):
+      The PostgreSQL container was OOM-killed (signal 9) while running a heavy analytics query introduced in the api 2.3.2 deploy; the abrupt termination left the data directory missing pg_control, so the database cannot restart.
+    
+    EVIDENCE:
+      - db container status Exited (137) 50 minutes ago (OOM exit code)
+      - db logs show 'terminated by signal 9' and the failing analytics query
+      - api 2.3.2 deployed 1 hour ago, coinciding with first OOM log
+      - disks have 37% used (18.8G and 31.6G free), ruling out disk-full
+    
+    WHY: Option 1 both ends the user impact (db restarts) and removes the root cause by rolling back the deploy that introduced the OOM-triggering query, whereas Option 2 only mitigates the symptom with a memory increase that may not suffice.
+    
+    SOURCES:
+      https://stackoverflow.com/questions/70376992/panic-could-not-open-control-file-global-pg-control-permission-denied
+
+[SAFETY CHECK]
+    BLOCKED: Rollback api and recover db by moving corrupted data aside
+      reason: step 1: /var/lib/postgresql/data holds the database's own data; moving it can destroy data
+
+[SAFETY CHECK]
+    BLOCKED: Keep api 2.3.2, increase db memory, and recover db by moving corrupted data aside
+      reason: step 1: /var/lib/postgresql/data holds the database's own data; moving it can destroy data
+
+No safe fix options to choose from. A human has to decide what to do.
+
+[VERDICT]
+    NOT FIXED
+    No fix was approved, so nothing was changed.
+    
+    Users OK?
+      (all of these are needed)
+      NO  api runs shopapp/api:2.3.2
+      NO  db is exited
+    Stays fixed?
+      NO  api runs shopapp/api:2.3.2
+
+======================================================================
+HIDDEN TRUTH (the agent never saw this):
+    Fault:      Database OOM crash, no restart
+    Idea:       the database crashed once and stayed down
+    Root cause: api 2.3.2 introduced an analytics dashboard query that makes PostgreSQL exceed its 1 GB memory limit; the database was killed (OOM, signal 9) and the container has no restart policy, so it stays down.
+    Fix:        Roll back api to 2.3.1, then start the database container. Long term: fix the query or give the database more memory and enable restart policy.
+
+COST: 9 model calls, 25.1 s, 18,624 tokens in, 6,799 out

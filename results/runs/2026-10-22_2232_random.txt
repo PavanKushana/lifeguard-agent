@@ -1,0 +1,198 @@
+Run: random at 2026-10-22 22:32
+Models: triage=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B, investigator=nvidia/nemotron-3-super-120b-a12b, final_call=nvidia/Nemotron-3-Ultra-550b-a55b, fault_maker=nvidia/Nemotron-3-Ultra-550b-a55b
+
+FAULT IDEA: random, hidden until the end
+Building the fault (Ultra), this can take a minute...
+    try 1: 2 problem(s)
+    try 2: all checks passed
+    building cost: 2 model calls, 21.3 s, 11,161 tokens in, 7,108 out
+Fault saved to results\custom_faults\2026-10-22_2232.json (rerun it with that path).
+
+ALERT: Customers can browse products, but placing an order fails with a 500 error. The issue started about an hour ago.
+
+[TRIAGE (Nano)]
+    {
+      "severity": "critical",
+      "category": "crash",
+      "first_guess": "The order fails with a 500 error indicating the API service is broken",
+      "check_first": "api container logs"
+    }
+
+[TOOL CALL]
+    list_containers({})
+
+[RESULT]
+    NAME    IMAGE               RESTARTS  STATUS
+    web     nginx:1.27          0         Up 12 days
+    api     shopapp/api:2.3.2   0         Up 55 minutes
+    db      postgres:16         0         Up 12 days
+    cache   redis:7.4           0         Up 9 days
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/"})
+
+[RESULT]
+    HTTP 200 in 45 ms
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/api/health"})
+
+[RESULT]
+    HTTP 200 in 68 ms
+
+[TOOL CALL]
+    get_logs({"container": "api", "lines": 30})
+
+[RESULT]
+    2026-10-19 22:33:17 INFO Connected to database db:5432
+    2026-10-19 22:33:17 INFO Connected to cache cache:6379
+    2026-10-22 21:38:17 INFO GET /api/products 200 in 42ms
+    2026-10-22 21:38:17 INFO Starting shopapp api 2.3.2
+    2026-10-22 21:41:17 ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)
+    2026-10-22 21:48:17 ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)
+    2026-10-22 21:55:17 ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)
+    2026-10-22 22:11:17 ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)
+    2026-10-22 22:18:17 ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)
+    2026-10-22 22:25:17 ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)
+    2026-10-22 22:30:17 ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)
+
+[TOOL CALL]
+    recent_changes({})
+
+[RESULT]
+    2026-10-22 21:38:17 (55 minutes ago) Deployed api 2.3.2 (refactor order validation)
+    2026-10-19 22:33:17 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+    2026-10-13 22:33:17 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+[TOOL CALL]
+    search_web({"query": "\"'NoneType' object has no attribute 'strip'\" order validation"})
+
+[RESULT]
+    Web results for: "'NoneType' object has no attribute 'strip'" order validation
+    1. Fix NoneType Object has no Attribute Strip (2026 NoneType)
+       https://itsourcecode.com/attributeerror/attributeerror-nonetype-object-has-no-attribute-strip-solved
+       Here’s an example of how you might encounter the ‘nonetype’ object has no attribute ‘strip’ error. We’re trying to call the strip() method on the variable, which has been set to None. However, None is a special type in Python that represents the absence of a value, and it doesn’t have a strip() method. Here’s an example code: my_string = None cleaned_text = my_string.strip() Therefore, when we try to call strip() on the variable, Python raises an AttributeError. [...] ## Conclusion In Conclusion...
+    2. AttributeError: 'NoneType' object has no attribute 'strip'
+       https://stackoverflow.com/questions/41203823/attributeerror-nonetype-object-has-no-attribute-strip
+       The first member of samples does not have a string attribute, and as a result, a.string doesn't return anything, so you're calling the strip()
+    3. Fix AttributeError: 'NoneType' Object in Python
+       https://www.cmarix.com/qanda/attributeerror-nonetype-object-python
+       For Example: my_string = "hello" result = my_string.replace("h", "H").strip().lower().capitalize() print(result) This works fine. But in some cases: data = get_data_from_api() # returns None print(data.strip()) Throws: AttributeError: 'NoneType' object has no attribute 'strip' This is one of the most common runtime errors in Python and usually points to something being unexpectedly None. Why This Happens [...] Bad: value = my_dict.get("missing_key").strip() If "missing_key" isn't in the dictiona...
+
+[REPORT (Super)]
+    
+    **ROOT CAUSE:**  
+    The API container was redeployed 55 minutes ago to version 2.3.2, which introduced a refactor of order validation that tries to call `.strip()` on a `None` value (e.g., a missing request field or config), causing every POST / api/orders to return 500.
+    
+    **EVIDENCE:**  
+    - `list_containers` shows the `api` container has been **Up 55 minutes**, matching the onset of the errors.  
+    - `get_logs api` reveals repeated errors: `ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)` starting at 2026‑10‑22 21:41:17, shortly after the deploy timestamp.  
+    - `recent_changes` logs a deployment: `2026-10-22 21:38:17 (55 minutes ago) Deployed api 2.3.2 (refactor order validation)`.  
+    - Web search confirms that calling `.strip()` on a `None` value produces exactly this AttributeError, indicating a missing or unexpected null value in the code.
+    
+    **FIX:**  
+    - **Quick fix:** Roll back the API to the previous known‑good image (`shopapp/api:2.3.1`) or restart the container with the old image, which will eliminate the faulty code path until a proper patch is applied. Verify by checking that POST / api/orders returns 200 and that the error lines disappear from `get_logs api`.  
+    - **Long‑term fix:** Update the API code to guard against `None` values before calling `.strip()` (e.g., `if value: value.strip()`) or ensure the required field/config is present, then redeploy the corrected version.
+    
+    SOURCES:
+    https://itsourcecode.com/attributeerror/attributeerror-nonetype-object-has-no-attribute-strip-solved
+    https://stackoverflow.com/questions/41203823/attributeerror-nonetype-object-has-no-attribute-strip
+    https://www.cmarix.com/qanda/attributeerror-nonetype-object-python
+
+[FINAL CALL (Ultra)]
+    ROOT CAUSE (high confidence, agrees with the investigator):
+      The API container was redeployed 55 minutes ago to version 2.3.2, which introduced a code change in order validation that calls .strip() on a None value, causing every POST /api/orders to return a 500 error.
+    
+    EVIDENCE:
+      - list_containers shows api container Up 55 minutes, matching the deploy time
+      - get_logs api shows repeated 'NoneType' object has no attribute 'strip' errors starting at 21:41:17
+      - recent_changes logs deployment of api 2.3.2 with 'refactor order validation' 55 minutes ago
+      - Web search confirms AttributeError when calling .strip() on None
+    
+    OPTION 1: Rollback API to previous version  <- RECOMMENDED
+      steps:
+        1. rollback(container=api, to_image=shopapp/api:2.3.1)
+      pros:   Immediately restores order placement by removing the faulty code; Eliminates the root cause (the bad deploy); Reversible if a fixed version becomes available
+      cons:   Temporarily loses the refactor changes from version 2.3.2; Requires a follow-up deploy of a corrected version
+      undo:   Rollback api to shopapp/api:2.3.2 or redeploy version 2.3.2
+      can be undone: yes | risk: low
+    
+    OPTION 2: Restart API container (keep current version)
+      steps:
+        1. restart(container=api)
+      pros:   Quick to execute; Keeps the new version 2.3.2 deployed
+      cons:   Does not fix the AttributeError; order failures will persist; Only resets container state, not the underlying code bug
+      undo:   Restart api again (no change)
+      can be undone: yes | risk: low
+    
+    WHY: Rollback to 2.3.1 immediately restores order functionality by removing the faulty code deployed 55 minutes ago.
+    
+    SOURCES:
+      https://itsourcecode.com/attributeerror/attributeerror-nonetype-object-has-no-attribute-strip-solved
+      https://stackoverflow.com/questions/41203823/attributeerror-nonetype-object-has-no-attribute-strip
+      https://www.cmarix.com/qanda/attributeerror-nonetype-object-python
+
+[SAFETY CHECK]
+    All 2 options passed the safety check.
+
+======================================================================
+YOUR DECISION
+    1. Rollback API to previous version (recommended)
+    2. Restart API container (keep current version)
+    0. Reject all, change nothing
+Picked: 1
+Steps that will run:
+    1. rollback(container=api, to_image=shopapp/api:2.3.1)
+Answer: yes
+
+DECISION: approved option 1: Rollback API to previous version (by pavan at 2026-10-22 22:33:48)
+
+[APPLYING THE FIX]
+    1. rolled back api to shopapp/api:2.3.1
+
+[AFTER THE FIX]
+    $ df -h
+    Mounted on            Size    Used    Avail   Use%
+    /                     30.0G   11.2G   18.8G   37%
+    /var/lib/postgresql   50.0G   18.4G   31.6G   37%
+    
+    $ docker ps -a
+    NAME    IMAGE               RESTARTS  STATUS
+    web     nginx:1.27          0         Up 12 days
+    api     shopapp/api:2.3.1   0         Up 0 seconds
+    db      postgres:16         0         Up 12 days
+    cache   redis:7.4           0         Up 9 days
+    
+    $ crontab -l
+    NAME         SCHEDULE  ENABLED  LAST RUN          COMMAND
+    rotate-logs  daily     yes      2026-10-22 13:33  logrotate /etc/logrotate.conf
+    
+    $ curl http://localhost/api/health
+    HTTP 200 in 65 ms
+    
+    $ docker logs --tail 3 api
+    2026-10-22 22:25:17 ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)
+    2026-10-22 22:30:17 ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)
+    2026-10-22 22:33:48 INFO Starting shopapp api 2.3.1
+    
+    $ docker logs --tail 3 db
+    2026-10-22 21:59:17 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+    2026-10-22 22:28:17 LOG:  checkpoint starting: time
+    2026-10-22 22:29:17 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+
+[VERDICT]
+    FIXED
+    
+    Users OK?
+      OK  api runs shopapp/api:2.3.1
+    Stays fixed?
+      OK  api runs shopapp/api:2.3.1
+
+======================================================================
+HIDDEN TRUTH (the agent never saw this):
+    Fault:      Broken checkout in new API deploy
+    Idea:       a new api version breaks some pages
+    Root cause: api 2.3.2 introduced a regression in the order creation logic: a missing null check on the payment_token field causes an unhandled AttributeError on POST /api/orders, while read endpoints like /api/products still work.
+    Fix:        Roll back api to 2.3.1, then verify orders complete successfully. Long term: add a test for the payment_token null case.
+
+COST: 9 model calls, 20.1 s, 18,484 tokens in, 5,029 out
