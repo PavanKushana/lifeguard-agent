@@ -37,18 +37,9 @@ def main() -> None:
     else:
         print("No fault given, so the server is healthy.")
 
-    show("docker ps -a", tools.list_containers(server))
-    show("docker stats --no-stream", tools.get_metrics(server))
-    show("df -h", tools.check_disk(server))
-    for mount in server.disks:
-        show(f"du -xsh --time {mount.rstrip('/')}/*", tools.check_folder_sizes(server, mount))
-    show("crontab -l", tools.list_jobs(server))
-    show("recent changes", tools.recent_changes(server))
-    for url in server.endpoints:
-        show(f"curl {url}", tools.check_endpoint(server, url))
-    # 15 lines, so the first error of a fault isn't cut off by later noise.
-    for name in server.containers:
-        show(f"docker logs --tail 15 {name}", tools.get_logs(server, name, lines=15))
+    # 15 log lines, so the first error of a fault isn't cut off by later noise.
+    for command, output in tools.snapshot(server, log_lines=15):
+        show(command, output)
 
 
 if __name__ == "__main__":

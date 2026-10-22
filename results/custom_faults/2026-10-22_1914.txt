@@ -1,0 +1,279 @@
+Fault idea: a new api deploy has a typo in the database password
+
+GUARD: allowed (nano): Allowed – it describes a plausible server problem (a typo in a database password after a deploy).
+
+Ultra is building the fault...
+
+THE FAULT (hidden from the agent, except the alert):
+{
+  "title": "API database password typo",
+  "alert": "The shop homepage loads, but any action needing the API (products, cart, checkout) shows 'Service unavailable'. The API health endpoint returns 503.",
+  "truth": {
+    "service": "api",
+    "category": "deploy",
+    "root_cause": "The api 2.3.2 deploy introduced a typo in the DATABASE_PASSWORD environment variable, so the application cannot authenticate to PostgreSQL. Every database connection fails with a password error.",
+    "fix": "Roll back the api container to image shopapp/api:2.3.1, then verify the health endpoint returns 200 and product pages work again."
+  },
+  "changes": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.2",
+        "restarts": 0,
+        "since_minutes_ago": 120,
+        "cpu_percent": 2.0,
+        "memory_mb": 185,
+        "memory_limit_mb": 512
+      }
+    },
+    "recent_changes": [
+      [
+        120,
+        "Deployed api 2.3.2 (updated dependencies)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 503,
+        "ms": 8
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          120,
+          "INFO Starting shopapp api 2.3.2"
+        ],
+        [
+          118,
+          "ERROR GET /api/health 503: database connection failed: FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          115,
+          "ERROR GET /api/products 500: database connection failed: FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          95,
+          "ERROR GET /api/products 500: database connection failed: FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          60,
+          "ERROR GET /api/cart 500: database connection failed: FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          30,
+          "ERROR GET /api/health 503: database connection failed: FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          5,
+          "ERROR GET /api/products 500: database connection failed: FATAL:  password authentication failed for user \"shop\""
+        ]
+      ],
+      "db": [
+        [
+          118,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          118,
+          "DETAIL:  Connection matched pg_hba.conf line 99: \"host all all all md5\""
+        ],
+        [
+          115,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          115,
+          "DETAIL:  Connection matched pg_hba.conf line 99: \"host all all all md5\""
+        ],
+        [
+          95,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          95,
+          "DETAIL:  Connection matched pg_hba.conf line 99: \"host all all all md5\""
+        ],
+        [
+          60,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          60,
+          "DETAIL:  Connection matched pg_hba.conf line 99: \"host all all all md5\""
+        ],
+        [
+          30,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          30,
+          "DETAIL:  Connection matched pg_hba.conf line 99: \"host all all all md5\""
+        ],
+        [
+          5,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          5,
+          "DETAIL:  Connection matched pg_hba.conf line 99: \"host all all all md5\""
+        ]
+      ]
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.1",
+        "status": "running",
+        "since_minutes_ago": 0,
+        "cpu_percent": 4.0,
+        "memory_mb": 180
+      }
+    },
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          0,
+          "INFO Starting shopapp api 2.3.1"
+        ],
+        [
+          0,
+          "INFO GET /api/health 200 in 58ms"
+        ],
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ],
+      "db": [
+        [
+          0,
+          "LOG:  checkpoint complete: wrote 412 buffers (2.5%)"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "a new api deploy has a typo in the database password"
+}
+
+WHAT THE AGENT WILL SEE
+Alert: The shop homepage loads, but any action needing the API (products, cart, checkout) shows 'Service unavailable'. The API health endpoint returns 503.
+
+$ docker ps -a
+NAME    IMAGE               RESTARTS  STATUS
+web     nginx:1.27          0         Up 12 days
+api     shopapp/api:2.3.2   0         Up 2 hours
+db      postgres:16         0         Up 12 days
+cache   redis:7.4           0         Up 9 days
+
+$ docker stats --no-stream
+NAME    CPU %   MEM USAGE / LIMIT     MEM %
+web     0.5     25MiB / 256MiB        10%
+api     2.0     185MiB / 512MiB       36%
+db      3.0     320MiB / 1024MiB      31%
+cache   0.8     60MiB / 256MiB        23%
+
+$ df -h
+Mounted on            Size    Used    Avail   Use%
+/                     30.0G   11.2G   18.8G   37%
+/var/lib/postgresql   50.0G   18.4G   31.6G   37%
+
+$ du -xsh --time /*
+9.3G    2026-10-22 19:04  /var
+1.9G    2026-09-22 19:14  /usr
+11.2G                     total
+
+$ du -xsh --time /var/lib/postgresql/*
+18.4G   2026-10-22 19:12  /var/lib/postgresql/data
+18.4G                     total
+
+$ crontab -l
+NAME         SCHEDULE  ENABLED  LAST RUN          COMMAND
+rotate-logs  daily     yes      2026-10-22 10:14  logrotate /etc/logrotate.conf
+
+$ recent changes
+2026-10-22 17:14:01 (2 hours ago) Deployed api 2.3.2 (updated dependencies)
+2026-10-19 19:14:01 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+2026-10-13 19:14:01 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+$ curl http://localhost/
+HTTP 200 in 40 ms
+
+$ curl http://localhost/api/health
+HTTP 503 in 8 ms
+
+$ docker logs --tail 15 web
+2026-10-22 18:19:01 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 18:33:01 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 18:44:01 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 18:56:01 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 19:08:01 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 19:12:01 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+
+$ docker logs --tail 15 api
+2026-10-19 19:14:01 INFO Connected to database db:5432
+2026-10-19 19:14:01 INFO Connected to cache cache:6379
+2026-10-22 17:14:01 INFO Starting shopapp api 2.3.2
+2026-10-22 17:16:01 ERROR GET /api/health 503: database connection failed: FATAL:  password authentication failed for user "shop"
+2026-10-22 17:19:01 ERROR GET /api/products 500: database connection failed: FATAL:  password authentication failed for user "shop"
+2026-10-22 17:39:01 ERROR GET /api/products 500: database connection failed: FATAL:  password authentication failed for user "shop"
+2026-10-22 18:14:01 ERROR GET /api/cart 500: database connection failed: FATAL:  password authentication failed for user "shop"
+2026-10-22 18:19:01 INFO GET /api/products 200 in 42ms
+2026-10-22 18:33:01 INFO GET /api/products 200 in 42ms
+2026-10-22 18:44:01 INFO GET /api/products 200 in 42ms
+2026-10-22 18:44:01 ERROR GET /api/health 503: database connection failed: FATAL:  password authentication failed for user "shop"
+2026-10-22 18:56:01 INFO GET /api/products 200 in 42ms
+2026-10-22 19:08:01 INFO GET /api/products 200 in 42ms
+2026-10-22 19:09:01 ERROR GET /api/products 500: database connection failed: FATAL:  password authentication failed for user "shop"
+2026-10-22 19:12:01 INFO GET /api/products 200 in 42ms
+
+$ docker logs --tail 15 db
+2026-10-22 17:16:01 DETAIL:  Connection matched pg_hba.conf line 99: "host all all all md5"
+2026-10-22 17:19:01 FATAL:  password authentication failed for user "shop"
+2026-10-22 17:19:01 DETAIL:  Connection matched pg_hba.conf line 99: "host all all all md5"
+2026-10-22 17:39:01 FATAL:  password authentication failed for user "shop"
+2026-10-22 17:39:01 DETAIL:  Connection matched pg_hba.conf line 99: "host all all all md5"
+2026-10-22 18:14:01 FATAL:  password authentication failed for user "shop"
+2026-10-22 18:14:01 DETAIL:  Connection matched pg_hba.conf line 99: "host all all all md5"
+2026-10-22 18:39:01 LOG:  checkpoint starting: time
+2026-10-22 18:40:01 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+2026-10-22 18:44:01 DETAIL:  Connection matched pg_hba.conf line 99: "host all all all md5"
+2026-10-22 18:44:01 FATAL:  password authentication failed for user "shop"
+2026-10-22 19:09:01 LOG:  checkpoint starting: time
+2026-10-22 19:09:01 FATAL:  password authentication failed for user "shop"
+2026-10-22 19:09:01 DETAIL:  Connection matched pg_hba.conf line 99: "host all all all md5"
+2026-10-22 19:10:01 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+
+$ docker logs --tail 15 cache
+2026-10-13 19:14:01 * Ready to accept connections tcp
+2026-10-22 18:49:01 * 100 changes in 300 seconds. Saving...
+2026-10-22 18:49:01 * Background saving terminated with success
+
+2 model calls, 7.6 s, 5,175 tokens in, 2,049 out

@@ -1,0 +1,165 @@
+{
+  "title": "API database authentication failure",
+  "alert": "The shop homepage loads, but any page needing the database shows 'Service unavailable'. The API health check is failing.",
+  "truth": {
+    "service": "api",
+    "category": "config",
+    "root_cause": "The new api 2.3.2 image has a typo in the DATABASE_PASSWORD environment variable, so the Python app cannot authenticate to PostgreSQL. The container stays running but every database request fails.",
+    "fix": "Roll back the api container to 2.3.1, then verify the health endpoint and product pages work again."
+  },
+  "changes": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.2",
+        "since_minutes_ago": 30,
+        "restarts": 0,
+        "cpu_percent": 4.0,
+        "memory_mb": 180,
+        "memory_limit_mb": 512
+      }
+    },
+    "recent_changes": [
+      [
+        30,
+        "Deployed api 2.3.2 (refactor database connection pool)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 503,
+        "ms": 12
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          30,
+          "INFO Starting shopapp api 2.3.2"
+        ],
+        [
+          28,
+          "ERROR GET /api/health 503: FATAL: password authentication failed for user \"shop\""
+        ],
+        [
+          25,
+          "ERROR GET /api/products 500: password authentication failed for user \"shop\""
+        ],
+        [
+          20,
+          "ERROR GET /api/health 503: FATAL: password authentication failed for user \"shop\""
+        ],
+        [
+          15,
+          "ERROR GET /api/products 500: password authentication failed for user \"shop\""
+        ],
+        [
+          10,
+          "ERROR GET /api/health 503: FATAL: password authentication failed for user \"shop\""
+        ],
+        [
+          5,
+          "ERROR GET /api/products 500: password authentication failed for user \"shop\""
+        ],
+        [
+          2,
+          "ERROR GET /api/health 503: FATAL: password authentication failed for user \"shop\""
+        ]
+      ],
+      "db": [
+        [
+          28,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          28,
+          "DETAIL:  Connection matched pg_hba.conf line 99: \"host all all 0.0.0.0/0 md5\""
+        ],
+        [
+          25,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          20,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          15,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          10,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          5,
+          "FATAL:  password authentication failed for user \"shop\""
+        ],
+        [
+          2,
+          "FATAL:  password authentication failed for user \"shop\""
+        ]
+      ]
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.1",
+        "status": "running",
+        "since_minutes_ago": 0,
+        "cpu_percent": 4.0,
+        "memory_mb": 180
+      }
+    },
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          0,
+          "INFO Starting shopapp api 2.3.1"
+        ],
+        [
+          0,
+          "INFO GET /api/health 200 in 58ms"
+        ],
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ],
+      "db": [
+        [
+          0,
+          "LOG:  checkpoint complete: wrote 210 buffers (1.3%)"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "a new api deploy has a typo in the database password"
+}

@@ -21,6 +21,8 @@ MODELS = {
     "triage": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
     "investigator": "nvidia/nemotron-3-super-120b-a12b",
     "final_call": "nvidia/Nemotron-3-Ultra-550b-a55b",
+    # Building a custom fault is creative and must fit together, so it gets the strongest model too.
+    "fault_maker": "nvidia/Nemotron-3-Ultra-550b-a55b",
 }
 
 _client = None  # created on first use, so files that never call a model don't need an API key
@@ -51,7 +53,7 @@ class Usage:
 
 
 def ask(job: str, messages: list, usage: Usage, tools: list | None = None, max_tokens: int = 1500):
-    """Send the conversation to the model for this job ('triage', 'investigator' or 'final_call').
+    """Send the conversation to the model for this job (a key of MODELS, e.g. 'triage' or 'final_call').
 
     Adds the time and tokens to `usage` and returns the model's reply message.
     """

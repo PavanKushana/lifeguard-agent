@@ -1,0 +1,331 @@
+Fault idea: the cache crashed
+
+GUARD: allowed (nano): Cache crashes are a realistic fault in this Redis container, so the idea is valid for testing.
+
+Ultra is building the fault...
+
+THE FAULT (hidden from the agent, except the alert):
+{
+  "title": "Cache out of memory after API deploy",
+  "alert": "Product pages load slowly or show 'Service unavailable' errors; the issue comes and goes every few minutes.",
+  "truth": {
+    "service": "cache",
+    "category": "memory",
+    "root_cause": "The api 2.3.1 deploy changed the caching layer to store full product JSON blobs instead of only IDs. Over three days this grew Redis past its 256 MiB limit, so the container is repeatedly OOM-killed (signal 9) and restarts.",
+    "fix": "Roll back api to 2.3.0 (or disable the new caching behaviour), then verify Redis stays up. Long term: either give Redis more memory or change the API to cache smaller values."
+  },
+  "changes": {
+    "containers": {
+      "cache": {
+        "status": "restarting",
+        "restarts": 3,
+        "since_minutes_ago": 5,
+        "exit_code": 137,
+        "memory_mb": 256,
+        "cpu_percent": 15.0
+      },
+      "api": {
+        "image": "shopapp/api:2.3.1",
+        "since_minutes_ago": 4320
+      }
+    },
+    "recent_changes": [
+      [
+        4320,
+        "Deployed api 2.3.1 (fix checkout button, also switched product caching to full JSON)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      },
+      "http://localhost/": {
+        "status": 200,
+        "ms": 120
+      }
+    },
+    "logs": {
+      "cache": [
+        [
+          35,
+          "* 100 changes in 300 seconds. Saving..."
+        ],
+        [
+          35,
+          "* Background saving terminated with success"
+        ],
+        [
+          30,
+          "* 100 changes in 300 seconds. Saving..."
+        ],
+        [
+          30,
+          "* Background saving terminated with success"
+        ],
+        [
+          25,
+          "* 100 changes in 300 seconds. Saving..."
+        ],
+        [
+          25,
+          "* Background saving terminated with success"
+        ],
+        [
+          20,
+          "* 100 changes in 300 seconds. Saving..."
+        ],
+        [
+          20,
+          "* Background saving terminated with success"
+        ],
+        [
+          15,
+          "* 100 changes in 300 seconds. Saving..."
+        ],
+        [
+          15,
+          "* Background saving terminated with success"
+        ],
+        [
+          10,
+          "* 100 changes in 300 seconds. Saving..."
+        ],
+        [
+          10,
+          "* Background saving terminated with success"
+        ],
+        [
+          5,
+          "* Ready to accept connections tcp"
+        ]
+      ],
+      "api": [
+        [
+          35,
+          "ERROR GET /api/products 500: cache error: Connection refused - is cache running?"
+        ],
+        [
+          35,
+          "WARN Falling back to database for product list"
+        ],
+        [
+          20,
+          "ERROR GET /api/products 500: cache error: Connection refused - is cache running?"
+        ],
+        [
+          20,
+          "WARN Falling back to database for product list"
+        ],
+        [
+          5,
+          "ERROR GET /api/products 500: cache error: Connection refused - is cache running?"
+        ],
+        [
+          5,
+          "WARN Falling back to database for product list"
+        ],
+        [
+          2,
+          "INFO GET /api/products 200 in 85ms"
+        ]
+      ],
+      "web": [
+        [
+          35,
+          "2026-10-22 18:35:13 172.18.0.1 - - \"GET /products HTTP/1.1\" 500 128"
+        ],
+        [
+          20,
+          "2026-10-22 18:50:13 172.18.0.1 - - \"GET /products HTTP/1.1\" 500 128"
+        ],
+        [
+          5,
+          "2026-10-22 19:05:13 172.18.0.1 - - \"GET /products HTTP/1.1\" 500 128"
+        ],
+        [
+          2,
+          "2026-10-22 19:08:13 172.18.0.1 - - \"GET /products HTTP/1.1\" 200 5123"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "cache": 35
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "any": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.0"
+        },
+        {
+          "check": "memory_limit_mb",
+          "container": "cache",
+          "at_least": 512
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.0"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "cache": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "memory_mb": 70,
+        "cpu_percent": 0.8
+      }
+    },
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 40
+      },
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "cache": [
+        [
+          0,
+          "* Ready to accept connections tcp"
+        ],
+        [
+          0,
+          "* 100 changes in 300 seconds. Saving..."
+        ],
+        [
+          0,
+          "* Background saving terminated with success"
+        ]
+      ],
+      "api": [
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ],
+      "web": [
+        [
+          0,
+          "2026-10-22 19:10:13 172.18.0.1 - - \"GET /products HTTP/1.1\" 200 5123"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "the cache crashed"
+}
+
+WHAT THE AGENT WILL SEE
+Alert: Product pages load slowly or show 'Service unavailable' errors; the issue comes and goes every few minutes.
+
+$ docker ps -a
+NAME    IMAGE               RESTARTS  STATUS
+web     nginx:1.27          0         Up 12 days
+api     shopapp/api:2.3.1   0         Up 3 days
+db      postgres:16         0         Up 12 days
+cache   redis:7.4           3         Restarting (137) 5 minutes ago
+
+$ docker stats --no-stream
+NAME    CPU %   MEM USAGE / LIMIT     MEM %
+web     0.5     25MiB / 256MiB        10%
+api     4.0     180MiB / 512MiB       35%
+db      3.0     320MiB / 1024MiB      31%
+cache   0.0     0MiB / 256MiB         0%
+
+$ df -h
+Mounted on            Size    Used    Avail   Use%
+/                     30.0G   11.2G   18.8G   37%
+/var/lib/postgresql   50.0G   18.4G   31.6G   37%
+
+$ du -xsh --time /*
+9.3G    2026-10-22 19:00  /var
+1.9G    2026-09-22 19:10  /usr
+11.2G                     total
+
+$ du -xsh --time /var/lib/postgresql/*
+18.4G   2026-10-22 19:08  /var/lib/postgresql/data
+18.4G                     total
+
+$ crontab -l
+NAME         SCHEDULE  ENABLED  LAST RUN          COMMAND
+rotate-logs  daily     yes      2026-10-22 10:10  logrotate /etc/logrotate.conf
+
+$ recent changes
+2026-10-19 19:10:22 (3 days ago) Deployed api 2.3.1 (fix checkout button, also switched product caching to full JSON)
+2026-10-19 19:10:22 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+2026-10-13 19:10:22 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+$ curl http://localhost/
+HTTP 200 in 120 ms
+
+$ curl http://localhost/api/health
+HTTP 200 in 65 ms
+
+$ docker logs --tail 15 web
+2026-10-22 18:15:22 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 18:29:22 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 18:35:22 2026-10-22 18:35:13 172.18.0.1 - - "GET /products HTTP/1.1" 500 128
+2026-10-22 18:40:22 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 18:50:22 2026-10-22 18:50:13 172.18.0.1 - - "GET /products HTTP/1.1" 500 128
+2026-10-22 18:52:22 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 19:04:22 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 19:05:22 2026-10-22 19:05:13 172.18.0.1 - - "GET /products HTTP/1.1" 500 128
+2026-10-22 19:08:22 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 19:08:22 2026-10-22 19:08:13 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+
+$ docker logs --tail 15 api
+2026-10-19 19:10:22 INFO Connected to database db:5432
+2026-10-19 19:10:22 INFO Connected to cache cache:6379
+2026-10-22 18:15:22 INFO GET /api/products 200 in 42ms
+2026-10-22 18:29:22 INFO GET /api/products 200 in 42ms
+2026-10-22 18:35:22 ERROR GET /api/products 500: cache error: Connection refused - is cache running?
+2026-10-22 18:35:22 WARN Falling back to database for product list
+2026-10-22 18:40:22 INFO GET /api/products 200 in 42ms
+2026-10-22 18:50:22 ERROR GET /api/products 500: cache error: Connection refused - is cache running?
+2026-10-22 18:50:22 WARN Falling back to database for product list
+2026-10-22 18:52:22 INFO GET /api/products 200 in 42ms
+2026-10-22 19:04:22 INFO GET /api/products 200 in 42ms
+2026-10-22 19:05:22 ERROR GET /api/products 500: cache error: Connection refused - is cache running?
+2026-10-22 19:05:22 WARN Falling back to database for product list
+2026-10-22 19:08:22 INFO GET /api/products 200 in 42ms
+2026-10-22 19:08:22 INFO GET /api/products 200 in 85ms
+
+$ docker logs --tail 15 db
+2026-10-10 19:10:22 LOG:  database system is ready to accept connections
+2026-10-22 18:35:22 LOG:  checkpoint starting: time
+2026-10-22 18:36:22 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+2026-10-22 19:05:22 LOG:  checkpoint starting: time
+2026-10-22 19:06:22 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+
+$ docker logs --tail 15 cache
+2026-10-13 19:10:22 * Ready to accept connections tcp
+2026-10-22 18:35:22 * 100 changes in 300 seconds. Saving...
+2026-10-22 18:35:22 * Background saving terminated with success
+2026-10-22 18:40:22 * 100 changes in 300 seconds. Saving...
+2026-10-22 18:40:22 * Background saving terminated with success
+2026-10-22 18:45:22 * 100 changes in 300 seconds. Saving...
+2026-10-22 18:45:22 * Background saving terminated with success
+2026-10-22 18:50:22 * 100 changes in 300 seconds. Saving...
+2026-10-22 18:50:22 * Background saving terminated with success
+2026-10-22 18:55:22 * 100 changes in 300 seconds. Saving...
+2026-10-22 18:55:22 * Background saving terminated with success
+2026-10-22 19:00:22 * 100 changes in 300 seconds. Saving...
+2026-10-22 19:00:22 * Background saving terminated with success
+2026-10-22 19:05:22 * Ready to accept connections tcp
+
+2 model calls, 9.3 s, 5,159 tokens in, 2,577 out

@@ -6,6 +6,7 @@ Every fault has these parts:
 - alert:      what a user or monitor reports. This is the ONLY part the agent sees.
 - truth:      the real cause and fix. Hidden from the agent; the grader uses it later.
 - changes:    what to change in the Server (disks, files, jobs, containers, logs, health checks, deploys).
+              "stop_normal_logs" removes a container's normal log lines from a given time on.
 - fixed_when: after a fix, how to tell if it worked (checked by fixes.py, also hidden):
               "users_ok"    = what users see is fine again,
               "stays_fixed" = the cause is gone, so it won't come back.
@@ -176,6 +177,14 @@ def apply_changes(server: Server, changes: dict) -> None:
 
     for url, result in changes.get("endpoints", {}).items():
         server.endpoints[url] = result
+
+    # A broken service stops writing its normal lines. Without this, "GET /api/products 200" would keep
+    # showing up between the errors and the service would look half-working. Runs before the fault's
+    # own lines are added, so only the lines already there (the normal ones) are removed.
+    for name, minutes_back in changes.get("stop_normal_logs", {}).items():
+        cutoff = minutes_ago(minutes_back)
+        container = server.containers[name]
+        container.logs = [(moment, text) for moment, text in container.logs if moment < cutoff]
 
     for name, lines in changes.get("logs", {}).items():
         for minutes_back, text in lines:

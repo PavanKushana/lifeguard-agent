@@ -1,0 +1,171 @@
+{
+  "title": "Checkout feature flag causes N+1 query storm",
+  "alert": "Customers report the shop feels sluggish; product pages take 5-10 seconds to load since around 10 AM.",
+  "truth": {
+    "service": "api",
+    "category": "deploy",
+    "root_cause": "The api 2.3.1 deploy added a checkout_v2 feature flag. When enabled this morning, its product list query runs a separate SELECT per product (N+1), overwhelming the database.",
+    "fix": "Roll back api to 2.3.0 to remove the buggy feature flag code, then verify product pages are fast again. Long term: fix the N+1 query in 2.3.1 and re-enable the flag."
+  },
+  "changes": {
+    "containers": {
+      "api": {
+        "cpu_percent": 65.0,
+        "memory_mb": 250
+      },
+      "db": {
+        "cpu_percent": 45.0,
+        "memory_mb": 400
+      }
+    },
+    "recent_changes": [
+      [
+        4320,
+        "Deployed api 2.3.1 (fix checkout button)"
+      ],
+      [
+        2880,
+        "Upgraded cache from redis 7.2 to 7.4"
+      ],
+      [
+        480,
+        "Enabled checkout_v2 feature flag"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 200
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          480,
+          "INFO Feature flag checkout_v2 enabled"
+        ],
+        [
+          300,
+          "WARN GET /api/products 200 in 5200ms"
+        ],
+        [
+          240,
+          "WARN GET /api/products 200 in 6100ms"
+        ],
+        [
+          180,
+          "WARN GET /api/products 200 in 4800ms"
+        ],
+        [
+          120,
+          "WARN GET /api/products 200 in 5500ms"
+        ],
+        [
+          60,
+          "WARN GET /api/products 200 in 5900ms"
+        ],
+        [
+          10,
+          "WARN GET /api/products 200 in 5100ms"
+        ]
+      ],
+      "db": [
+        [
+          300,
+          "LOG:  duration: 5123.45 ms  statement: SELECT * FROM products WHERE id = 101"
+        ],
+        [
+          300,
+          "LOG:  duration: 5124.12 ms  statement: SELECT * FROM products WHERE id = 102"
+        ],
+        [
+          300,
+          "LOG:  duration: 5122.98 ms  statement: SELECT * FROM products WHERE id = 103"
+        ],
+        [
+          240,
+          "LOG:  duration: 6012.33 ms  statement: SELECT * FROM products WHERE id = 201"
+        ],
+        [
+          240,
+          "LOG:  duration: 6011.87 ms  statement: SELECT * FROM products WHERE id = 202"
+        ],
+        [
+          180,
+          "LOG:  duration: 4834.56 ms  statement: SELECT * FROM products WHERE id = 301"
+        ],
+        [
+          120,
+          "LOG:  duration: 5421.09 ms  statement: SELECT * FROM products WHERE id = 401"
+        ],
+        [
+          60,
+          "LOG:  duration: 5890.44 ms  statement: SELECT * FROM products WHERE id = 501"
+        ],
+        [
+          10,
+          "LOG:  duration: 5045.67 ms  statement: SELECT * FROM products WHERE id = 601"
+        ]
+      ]
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.0"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.0"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "api": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "cpu_percent": 4.0,
+        "memory_mb": 180,
+        "image": "shopapp/api:2.3.0"
+      },
+      "db": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "cpu_percent": 3.0,
+        "memory_mb": 340
+      }
+    },
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ],
+      "db": [
+        [
+          0,
+          "LOG:  checkpoint complete: wrote 210 buffers (1.3%)"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "the shop is really slow since this morning"
+}

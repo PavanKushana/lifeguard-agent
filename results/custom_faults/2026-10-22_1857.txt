@@ -1,0 +1,298 @@
+Fault idea: the cache crashed
+
+GUARD: allowed (nano): It's a legitimate server issue, like a Redis cache crash, that can happen here.
+
+Ultra is building the fault...
+
+THE FAULT (hidden from the agent, except the alert):
+{
+  "title": "Cache out of memory after Redis upgrade",
+  "alert": "Product pages load but the 'Add to cart' button spins and eventually shows 'Service unavailable'. The API health endpoint still returns 200.",
+  "truth": {
+    "service": "cache",
+    "category": "memory",
+    "root_cause": "Redis 7.4 introduced a memory fragmentation issue with the shop's key access pattern. Over the past 9 days memory use has crept up until it hits the 256 MB container limit, where the OOM killer terminates the process. The container restarts but quickly reaches the limit again.",
+    "fix": "Roll back cache to redis:7.2 (or raise its memory limit to 512 MB), then verify 'Add to cart' works. Long term: upgrade Redis after testing the workload or tune maxmemory-policy."
+  },
+  "changes": {
+    "containers": {
+      "cache": {
+        "restarts": 5,
+        "since_minutes_ago": 2,
+        "memory_mb": 254,
+        "cpu_percent": 12.0,
+        "status": "restarting"
+      },
+      "api": {
+        "memory_mb": 190,
+        "cpu_percent": 5.0
+      }
+    },
+    "recent_changes": [
+      [
+        12960,
+        "Upgraded cache from redis 7.2 to 7.4"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "cache": [
+        [
+          32,
+          "* Ready to accept connections tcp"
+        ],
+        [
+          31,
+          "* DB loaded from disk: 0.823 seconds"
+        ],
+        [
+          28,
+          "# Server memory usage 254.3 MB exceeded limit 256.00 MB - OOM killer triggered"
+        ],
+        [
+          28,
+          "# Server terminated by signal 9: Killed"
+        ],
+        [
+          22,
+          "* Ready to accept connections tcp"
+        ],
+        [
+          21,
+          "* DB loaded from disk: 0.791 seconds"
+        ],
+        [
+          18,
+          "# Server memory usage 255.1 MB exceeded limit 256.00 MB - OOM killer triggered"
+        ],
+        [
+          18,
+          "# Server terminated by signal 9: Killed"
+        ],
+        [
+          12,
+          "* Ready to accept connections tcp"
+        ],
+        [
+          11,
+          "* DB loaded from disk: 0.805 seconds"
+        ],
+        [
+          8,
+          "# Server memory usage 254.8 MB exceeded limit 256.00 MB - OOM killer triggered"
+        ],
+        [
+          8,
+          "# Server terminated by signal 9: Killed"
+        ],
+        [
+          3,
+          "* Ready to accept connections tcp"
+        ],
+        [
+          2,
+          "* DB loaded from disk: 0.812 seconds"
+        ]
+      ],
+      "api": [
+        [
+          30,
+          "WARNING GET /api/cart/add 503: cache connection refused, retrying"
+        ],
+        [
+          28,
+          "ERROR POST /api/cart/add 500: cache unavailable after 3 retries"
+        ],
+        [
+          24,
+          "WARNING GET /api/cart/add 503: cache connection refused, retrying"
+        ],
+        [
+          22,
+          "ERROR POST /api/cart/add 500: cache unavailable after 3 retries"
+        ],
+        [
+          16,
+          "WARNING GET /api/cart/add 503: cache connection refused, retrying"
+        ],
+        [
+          14,
+          "ERROR POST /api/cart/add 500: cache unavailable after 3 retries"
+        ],
+        [
+          10,
+          "WARNING GET /api/cart/add 503: cache connection refused, retrying"
+        ],
+        [
+          8,
+          "ERROR POST /api/cart/add 500: cache unavailable after 3 retries"
+        ],
+        [
+          4,
+          "WARNING GET /api/cart/add 503: cache connection refused, retrying"
+        ],
+        [
+          2,
+          "ERROR POST /api/cart/add 500: cache unavailable after 3 retries"
+        ]
+      ]
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "any": [
+        {
+          "check": "image",
+          "container": "cache",
+          "is": "redis:7.2"
+        },
+        {
+          "check": "memory_limit_mb",
+          "container": "cache",
+          "at_least": 512
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "cache",
+          "is": "redis:7.2"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "cache": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "memory_mb": 62,
+        "cpu_percent": 0.8
+      }
+    },
+    "logs": {
+      "cache": [
+        [
+          0,
+          "* Ready to accept connections tcp"
+        ],
+        [
+          0,
+          "* DB loaded from disk: 0.612 seconds"
+        ]
+      ],
+      "api": [
+        [
+          0,
+          "INFO POST /api/cart/add 201 in 18ms"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "the cache crashed"
+}
+
+WHAT THE AGENT WILL SEE
+Alert: Product pages load but the 'Add to cart' button spins and eventually shows 'Service unavailable'. The API health endpoint still returns 200.
+
+$ docker ps -a
+NAME    IMAGE               RESTARTS  STATUS
+web     nginx:1.27          0         Up 12 days
+api     shopapp/api:2.3.1   0         Up 3 days
+db      postgres:16         0         Up 12 days
+cache   redis:7.4           5         Restarting (0) 2 minutes ago
+
+$ docker stats --no-stream
+NAME    CPU %   MEM USAGE / LIMIT     MEM %
+web     0.5     25MiB / 256MiB        10%
+api     5.0     190MiB / 512MiB       37%
+db      3.0     320MiB / 1024MiB      31%
+cache   0.0     0MiB / 256MiB         0%
+
+$ df -h
+Mounted on            Size    Used    Avail   Use%
+/                     30.0G   11.2G   18.8G   37%
+/var/lib/postgresql   50.0G   18.4G   31.6G   37%
+
+$ du -xsh --time /*
+9.3G    2026-10-22 18:47  /var
+1.9G    2026-09-22 18:57  /usr
+11.2G                     total
+
+$ du -xsh --time /var/lib/postgresql/*
+18.4G   2026-10-22 18:55  /var/lib/postgresql/data
+18.4G                     total
+
+$ crontab -l
+NAME         SCHEDULE  ENABLED  LAST RUN          COMMAND
+rotate-logs  daily     yes      2026-10-22 09:57  logrotate /etc/logrotate.conf
+
+$ recent changes
+2026-10-19 18:57:03 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+2026-10-13 18:57:03 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+2026-10-13 18:57:03 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+$ curl http://localhost/
+HTTP 200 in 40 ms
+
+$ curl http://localhost/api/health
+HTTP 200 in 65 ms
+
+$ docker logs --tail 15 web
+2026-10-22 18:02:03 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 18:16:03 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 18:27:03 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 18:39:03 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 18:51:03 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+2026-10-22 18:55:03 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123
+
+$ docker logs --tail 15 api
+2026-10-22 18:16:03 INFO GET /api/products 200 in 42ms
+2026-10-22 18:27:03 INFO GET /api/products 200 in 42ms
+2026-10-22 18:27:03 WARNING GET /api/cart/add 503: cache connection refused, retrying
+2026-10-22 18:29:03 ERROR POST /api/cart/add 500: cache unavailable after 3 retries
+2026-10-22 18:33:03 WARNING GET /api/cart/add 503: cache connection refused, retrying
+2026-10-22 18:35:03 ERROR POST /api/cart/add 500: cache unavailable after 3 retries
+2026-10-22 18:39:03 INFO GET /api/products 200 in 42ms
+2026-10-22 18:41:03 WARNING GET /api/cart/add 503: cache connection refused, retrying
+2026-10-22 18:43:03 ERROR POST /api/cart/add 500: cache unavailable after 3 retries
+2026-10-22 18:47:03 WARNING GET /api/cart/add 503: cache connection refused, retrying
+2026-10-22 18:49:03 ERROR POST /api/cart/add 500: cache unavailable after 3 retries
+2026-10-22 18:51:03 INFO GET /api/products 200 in 42ms
+2026-10-22 18:53:03 WARNING GET /api/cart/add 503: cache connection refused, retrying
+2026-10-22 18:55:03 INFO GET /api/products 200 in 42ms
+2026-10-22 18:55:03 ERROR POST /api/cart/add 500: cache unavailable after 3 retries
+
+$ docker logs --tail 15 db
+2026-10-10 18:57:03 LOG:  database system is ready to accept connections
+2026-10-22 18:22:03 LOG:  checkpoint starting: time
+2026-10-22 18:23:03 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+2026-10-22 18:52:03 LOG:  checkpoint starting: time
+2026-10-22 18:53:03 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+
+$ docker logs --tail 15 cache
+2026-10-22 18:26:03 * DB loaded from disk: 0.823 seconds
+2026-10-22 18:29:03 # Server memory usage 254.3 MB exceeded limit 256.00 MB - OOM killer triggered
+2026-10-22 18:29:03 # Server terminated by signal 9: Killed
+2026-10-22 18:32:03 * 100 changes in 300 seconds. Saving...
+2026-10-22 18:32:03 * Background saving terminated with success
+2026-10-22 18:35:03 * Ready to accept connections tcp
+2026-10-22 18:36:03 * DB loaded from disk: 0.791 seconds
+2026-10-22 18:39:03 # Server memory usage 255.1 MB exceeded limit 256.00 MB - OOM killer triggered
+2026-10-22 18:39:03 # Server terminated by signal 9: Killed
+2026-10-22 18:45:03 * Ready to accept connections tcp
+2026-10-22 18:46:03 * DB loaded from disk: 0.805 seconds
+2026-10-22 18:49:03 # Server memory usage 254.8 MB exceeded limit 256.00 MB - OOM killer triggered
+2026-10-22 18:49:03 # Server terminated by signal 9: Killed
+2026-10-22 18:54:03 * Ready to accept connections tcp
+2026-10-22 18:55:03 * DB loaded from disk: 0.812 seconds
+
+2 model calls, 10.7 s, 4,888 tokens in, 2,247 out

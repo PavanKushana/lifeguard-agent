@@ -135,6 +135,24 @@ def check_endpoint(server: Server, url: str) -> str:
     return f"HTTP {result['status']} in {result['ms']} ms"
 
 
+def snapshot(server: Server, log_lines: int = 15) -> list[tuple[str, str]]:
+    """Every read-only tool run once, as (command, output) pairs: the whole board at a glance.
+
+    Used by try_simulator to check a fault by eye, and by the fault maker so Ultra sees
+    exactly what the agent's tools show on a healthy server.
+    """
+    board = [("docker ps -a", list_containers(server)),
+             ("docker stats --no-stream", get_metrics(server)),
+             ("df -h", check_disk(server))]
+    board += [(f"du -xsh --time {mount.rstrip('/')}/*", check_folder_sizes(server, mount))
+              for mount in server.disks]
+    board += [("crontab -l", list_jobs(server)), ("recent changes", recent_changes(server))]
+    board += [(f"curl {url}", check_endpoint(server, url)) for url in server.endpoints]
+    board += [(f"docker logs --tail {log_lines} {name}", get_logs(server, name, lines=log_lines))
+              for name in server.containers]
+    return board
+
+
 def web_search_tool(server: Server, query: str) -> str:
     """Look up an error on the internet. The server isn't used: the web is the same for every server."""
     return search_web(query)

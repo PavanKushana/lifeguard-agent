@@ -1,0 +1,223 @@
+{
+  "title": "API deploy causes Redis memory pressure",
+  "alert": "The shop is really slow since this morning; pages take 5-10 seconds to load.",
+  "truth": {
+    "service": "api",
+    "category": "deploy",
+    "root_cause": "API 2.3.2 deployed this morning writes large cart objects to Redis, filling its 256 MB limit and forcing frequent blocking RDB saves that add hundreds of ms to every cache call.",
+    "fix": "Roll back api to 2.3.1, then confirm pages load fast again. Long term: fix the caching bug in the new checkout flow."
+  },
+  "changes": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.2",
+        "since_minutes_ago": 60,
+        "cpu_percent": 15.0,
+        "memory_mb": 190
+      },
+      "cache": {
+        "memory_mb": 240,
+        "cpu_percent": 20.0
+      }
+    },
+    "recent_changes": [
+      [
+        60,
+        "Deployed api 2.3.2 (new checkout flow)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 5200
+      },
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 3100
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          55,
+          "WARNING cache SET session:cart:123 took 320ms"
+        ],
+        [
+          55,
+          "INFO GET /api/products 200 in 2800ms"
+        ],
+        [
+          43,
+          "WARNING cache GET session:cart:123 took 410ms"
+        ],
+        [
+          43,
+          "INFO GET /api/products 200 in 3100ms"
+        ],
+        [
+          31,
+          "WARNING cache SET session:cart:456 took 290ms"
+        ],
+        [
+          31,
+          "INFO GET /api/health 200 in 2900ms"
+        ],
+        [
+          19,
+          "WARNING cache GET session:cart:456 took 380ms"
+        ],
+        [
+          19,
+          "INFO GET /api/products 200 in 3300ms"
+        ],
+        [
+          7,
+          "WARNING cache SET session:cart:789 took 450ms"
+        ],
+        [
+          7,
+          "INFO GET /api/health 200 in 3000ms"
+        ]
+      ],
+      "cache": [
+        [
+          55,
+          "* 1200 changes in 60 seconds. Saving..."
+        ],
+        [
+          54,
+          "* Background saving terminated with success"
+        ],
+        [
+          43,
+          "* 1150 changes in 60 seconds. Saving..."
+        ],
+        [
+          42,
+          "* Background saving terminated with success"
+        ],
+        [
+          31,
+          "* 1300 changes in 60 seconds. Saving..."
+        ],
+        [
+          30,
+          "* Background saving terminated with success"
+        ],
+        [
+          19,
+          "* 1180 changes in 60 seconds. Saving..."
+        ],
+        [
+          18,
+          "* Background saving terminated with success"
+        ],
+        [
+          7,
+          "* 1250 changes in 60 seconds. Saving..."
+        ],
+        [
+          6,
+          "* Background saving terminated with success"
+        ]
+      ],
+      "web": [
+        [
+          55,
+          "172.18.0.1 - - \"GET /products HTTP/1.1\" 200 5123 5200ms"
+        ],
+        [
+          43,
+          "172.18.0.1 - - \"GET /products HTTP/1.1\" 200 5123 5300ms"
+        ],
+        [
+          31,
+          "172.18.0.1 - - \"GET / HTTP/1.1\" 200 8192 5100ms"
+        ],
+        [
+          19,
+          "172.18.0.1 - - \"GET /products HTTP/1.1\" 200 5123 5400ms"
+        ],
+        [
+          7,
+          "172.18.0.1 - - \"GET / HTTP/1.1\" 200 8192 5000ms"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "api": 60,
+      "cache": 60,
+      "web": 60
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.1",
+        "since_minutes_ago": 0,
+        "cpu_percent": 4.0,
+        "memory_mb": 180
+      },
+      "cache": {
+        "memory_mb": 60,
+        "cpu_percent": 0.8
+      }
+    },
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 40
+      },
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ],
+      "cache": [
+        [
+          0,
+          "* 100 changes in 300 seconds. Saving..."
+        ],
+        [
+          0,
+          "* Background saving terminated with success"
+        ]
+      ],
+      "web": [
+        [
+          0,
+          "172.18.0.1 - - \"GET /products HTTP/1.1\" 200 5123"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "the shop is really slow since this morning"
+}

@@ -1,0 +1,319 @@
+Fault idea: the shop is really slow since this morning
+
+GUARD: allowed (nano): It's a valid symptom of a performance problem we can investigate on this web shop server.
+
+Ultra is building the fault...
+
+THE FAULT (hidden from the agent, except the alert):
+{
+  "title": "API deploy causes Redis memory pressure",
+  "alert": "The shop is really slow since this morning; pages take 5-10 seconds to load.",
+  "truth": {
+    "service": "api",
+    "category": "deploy",
+    "root_cause": "API 2.3.2 deployed this morning writes large cart objects to Redis, filling its 256 MB limit and forcing frequent blocking RDB saves that add hundreds of ms to every cache call.",
+    "fix": "Roll back api to 2.3.1, then confirm pages load fast again. Long term: fix the caching bug in the new checkout flow."
+  },
+  "changes": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.2",
+        "since_minutes_ago": 60,
+        "cpu_percent": 15.0,
+        "memory_mb": 190
+      },
+      "cache": {
+        "memory_mb": 240,
+        "cpu_percent": 20.0
+      }
+    },
+    "recent_changes": [
+      [
+        60,
+        "Deployed api 2.3.2 (new checkout flow)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 5200
+      },
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 3100
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          55,
+          "WARNING cache SET session:cart:123 took 320ms"
+        ],
+        [
+          55,
+          "INFO GET /api/products 200 in 2800ms"
+        ],
+        [
+          43,
+          "WARNING cache GET session:cart:123 took 410ms"
+        ],
+        [
+          43,
+          "INFO GET /api/products 200 in 3100ms"
+        ],
+        [
+          31,
+          "WARNING cache SET session:cart:456 took 290ms"
+        ],
+        [
+          31,
+          "INFO GET /api/health 200 in 2900ms"
+        ],
+        [
+          19,
+          "WARNING cache GET session:cart:456 took 380ms"
+        ],
+        [
+          19,
+          "INFO GET /api/products 200 in 3300ms"
+        ],
+        [
+          7,
+          "WARNING cache SET session:cart:789 took 450ms"
+        ],
+        [
+          7,
+          "INFO GET /api/health 200 in 3000ms"
+        ]
+      ],
+      "cache": [
+        [
+          55,
+          "* 1200 changes in 60 seconds. Saving..."
+        ],
+        [
+          54,
+          "* Background saving terminated with success"
+        ],
+        [
+          43,
+          "* 1150 changes in 60 seconds. Saving..."
+        ],
+        [
+          42,
+          "* Background saving terminated with success"
+        ],
+        [
+          31,
+          "* 1300 changes in 60 seconds. Saving..."
+        ],
+        [
+          30,
+          "* Background saving terminated with success"
+        ],
+        [
+          19,
+          "* 1180 changes in 60 seconds. Saving..."
+        ],
+        [
+          18,
+          "* Background saving terminated with success"
+        ],
+        [
+          7,
+          "* 1250 changes in 60 seconds. Saving..."
+        ],
+        [
+          6,
+          "* Background saving terminated with success"
+        ]
+      ],
+      "web": [
+        [
+          55,
+          "172.18.0.1 - - \"GET /products HTTP/1.1\" 200 5123 5200ms"
+        ],
+        [
+          43,
+          "172.18.0.1 - - \"GET /products HTTP/1.1\" 200 5123 5300ms"
+        ],
+        [
+          31,
+          "172.18.0.1 - - \"GET / HTTP/1.1\" 200 8192 5100ms"
+        ],
+        [
+          19,
+          "172.18.0.1 - - \"GET /products HTTP/1.1\" 200 5123 5400ms"
+        ],
+        [
+          7,
+          "172.18.0.1 - - \"GET / HTTP/1.1\" 200 8192 5000ms"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "api": 60,
+      "cache": 60,
+      "web": 60
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.1",
+        "since_minutes_ago": 0,
+        "cpu_percent": 4.0,
+        "memory_mb": 180
+      },
+      "cache": {
+        "memory_mb": 60,
+        "cpu_percent": 0.8
+      }
+    },
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 40
+      },
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ],
+      "cache": [
+        [
+          0,
+          "* 100 changes in 300 seconds. Saving..."
+        ],
+        [
+          0,
+          "* Background saving terminated with success"
+        ]
+      ],
+      "web": [
+        [
+          0,
+          "172.18.0.1 - - \"GET /products HTTP/1.1\" 200 5123"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "the shop is really slow since this morning"
+}
+
+WHAT THE AGENT WILL SEE
+Alert: The shop is really slow since this morning; pages take 5-10 seconds to load.
+
+$ docker ps -a
+NAME    IMAGE               RESTARTS  STATUS
+web     nginx:1.27          0         Up 12 days
+api     shopapp/api:2.3.2   0         Up 1 hour
+db      postgres:16         0         Up 12 days
+cache   redis:7.4           0         Up 9 days
+
+$ docker stats --no-stream
+NAME    CPU %   MEM USAGE / LIMIT     MEM %
+web     0.5     25MiB / 256MiB        10%
+api     15.0    190MiB / 512MiB       37%
+db      3.0     320MiB / 1024MiB      31%
+cache   20.0    240MiB / 256MiB       94%
+
+$ df -h
+Mounted on            Size    Used    Avail   Use%
+/                     30.0G   11.2G   18.8G   37%
+/var/lib/postgresql   50.0G   18.4G   31.6G   37%
+
+$ du -xsh --time /*
+9.3G    2026-10-22 19:02  /var
+1.9G    2026-09-22 19:12  /usr
+11.2G                     total
+
+$ du -xsh --time /var/lib/postgresql/*
+18.4G   2026-10-22 19:10  /var/lib/postgresql/data
+18.4G                     total
+
+$ crontab -l
+NAME         SCHEDULE  ENABLED  LAST RUN          COMMAND
+rotate-logs  daily     yes      2026-10-22 10:12  logrotate /etc/logrotate.conf
+
+$ recent changes
+2026-10-22 18:12:57 (1 hour ago) Deployed api 2.3.2 (new checkout flow)
+2026-10-19 19:12:57 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+2026-10-13 19:12:57 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+$ curl http://localhost/
+HTTP 200 in 5200 ms
+
+$ curl http://localhost/api/health
+HTTP 200 in 3100 ms
+
+$ docker logs --tail 15 web
+2026-10-22 18:17:57 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123 5200ms
+2026-10-22 18:29:57 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123 5300ms
+2026-10-22 18:41:57 172.18.0.1 - - "GET / HTTP/1.1" 200 8192 5100ms
+2026-10-22 18:53:57 172.18.0.1 - - "GET /products HTTP/1.1" 200 5123 5400ms
+2026-10-22 19:05:57 172.18.0.1 - - "GET / HTTP/1.1" 200 8192 5000ms
+
+$ docker logs --tail 15 api
+2026-10-19 19:12:57 INFO Connected to database db:5432
+2026-10-19 19:12:57 INFO Connected to cache cache:6379
+2026-10-22 18:17:57 WARNING cache SET session:cart:123 took 320ms
+2026-10-22 18:17:57 INFO GET /api/products 200 in 2800ms
+2026-10-22 18:29:57 WARNING cache GET session:cart:123 took 410ms
+2026-10-22 18:29:57 INFO GET /api/products 200 in 3100ms
+2026-10-22 18:41:57 WARNING cache SET session:cart:456 took 290ms
+2026-10-22 18:41:57 INFO GET /api/health 200 in 2900ms
+2026-10-22 18:53:57 WARNING cache GET session:cart:456 took 380ms
+2026-10-22 18:53:57 INFO GET /api/products 200 in 3300ms
+2026-10-22 19:05:57 WARNING cache SET session:cart:789 took 450ms
+2026-10-22 19:05:57 INFO GET /api/health 200 in 3000ms
+
+$ docker logs --tail 15 db
+2026-10-10 19:12:57 LOG:  database system is ready to accept connections
+2026-10-22 18:37:57 LOG:  checkpoint starting: time
+2026-10-22 18:38:57 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+2026-10-22 19:07:57 LOG:  checkpoint starting: time
+2026-10-22 19:08:57 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+
+$ docker logs --tail 15 cache
+2026-10-13 19:12:57 * Ready to accept connections tcp
+2026-10-22 18:17:57 * 1200 changes in 60 seconds. Saving...
+2026-10-22 18:18:57 * Background saving terminated with success
+2026-10-22 18:29:57 * 1150 changes in 60 seconds. Saving...
+2026-10-22 18:30:57 * Background saving terminated with success
+2026-10-22 18:41:57 * 1300 changes in 60 seconds. Saving...
+2026-10-22 18:42:57 * Background saving terminated with success
+2026-10-22 18:53:57 * 1180 changes in 60 seconds. Saving...
+2026-10-22 18:54:57 * Background saving terminated with success
+2026-10-22 19:05:57 * 1250 changes in 60 seconds. Saving...
+2026-10-22 19:06:57 * Background saving terminated with success
+
+2 model calls, 16.1 s, 5,169 tokens in, 4,747 out
