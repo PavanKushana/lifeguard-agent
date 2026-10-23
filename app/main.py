@@ -10,11 +10,14 @@ other files (simulator, agent, approval, fixes), so the terminal and the web pag
 run exactly the same code.
 """
 
+import asyncio
+import json
 import threading
+from datetime import datetime, timedelta
 from enum import Enum
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agent import format_step, handle_incident
@@ -35,6 +38,10 @@ PresetId = Enum("PresetId", {preset_id: preset_id for preset_id in PRESETS}, typ
 
 # Only one decision at a time: a double click on "Approve" must not apply the same fix twice.
 decide_lock = threading.Lock()
+# The live stream looks for new steps this often (seconds), and gives up after this long
+# (the agent takes under a minute; a stream nobody closes must not stay open forever).
+STREAM_EVERY = 0.5
+STREAM_LIMIT = timedelta(minutes=5)
 # Breaking and resetting take turns: a fault finishing in the background at the same moment
 # as a reset must not land half on the old server and half on the new one.
 break_lock = threading.Lock()
@@ -264,8 +271,9 @@ def final_call_view(final: dict) -> dict:
         why = ("Ultra's recommended option was blocked by the safety check, so none of these is "
                "recommended. Compare the cons before picking.")
     if options:
-        how_to_decide = (f"POST /decide/{{option}} with a number from 1 to {len(options)} to approve "
-                         "that option, or 0 to reject them all.")
+        # Same as the terminal's question: "1" alone reads better than "from 1 to 1".
+        choices = "1" if len(options) == 1 else f"a number from 1 to {len(options)}"
+        how_to_decide = f"POST /decide/{{option}} with {choices} to approve that option, or 0 to reject them all."
     else:
         how_to_decide = "No safe option is left. POST /decide/0 to reject, and fix it by hand."
 
@@ -320,6 +328,50 @@ def incident(session: Session = Depends(current_session)) -> dict:
     return incident_view(session.incident)
 
 
+def sse(event: str, data: dict) -> str:
+    """One Server-Sent Event: an event name and a line of JSON, ended by an empty line. That's the whole format."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@app.get("/incident/stream")
+async def incident_stream(session: Session = Depends(current_session)) -> StreamingResponse:
+    """The agent's steps live, each one sent the moment it happens (Server-Sent Events).
+
+    Instead of the page asking GET /incident again and again, it opens this once and the server
+    pushes every new step as a "step" event. At the end comes one "done" (or "failed") event with
+    the whole incident, fix options included, and the stream closes.
+    Try it: open http://127.0.0.1:8000/incident/stream in a browser tab right after POST /investigate.
+    """
+    incident = session.incident
+    if incident is None:
+        raise HTTPException(404, "No investigation yet. Call POST /investigate first.")
+
+    async def events():
+        sent = 0  # how many steps this visitor already got
+        deadline = datetime.now() + STREAM_LIMIT
+        while datetime.now() < deadline:
+            # A reset starts a new incident: this one is over for the visitor.
+            if session.incident is not incident:
+                yield sse("reset", {"message": "The server was reset. Start a new investigation."})
+                return
+            # Read the state BEFORE the steps: the agent adds its last step before it says "done",
+            # so when this says done, every step is already in the list and none gets lost.
+            state = incident.state
+            new_steps = incident.steps[sent:]
+            for step in new_steps:
+                yield sse("step", step)
+            sent += len(new_steps)
+            if state != "running":
+                yield sse(state, incident_view(incident))  # "done" or "failed"
+                return
+            # async sleep: while this visitor waits, the server keeps answering everyone else.
+            await asyncio.sleep(STREAM_EVERY)
+        yield sse("timeout", {"message": "Still running after 5 minutes. Check GET /incident."})
+
+    # no-cache: a cached copy of a live stream would be stale the moment it was saved.
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
 @app.post("/decide/{option}")
 def decide(option: int, session: Session = Depends(current_session)) -> dict:
     """The human's decision: approve fix option 1, 2 or 3, or 0 to reject them all.
@@ -330,7 +382,10 @@ def decide(option: int, session: Session = Depends(current_session)) -> dict:
     FIXED, FIXED FOR NOW or NOT FIXED. A rejection gets a verdict too (nothing changed, so NOT FIXED).
     """
     incident = session.incident
-    if incident is None or incident.state != "done":
+    # Two different situations, two different answers: "wait" would be wrong advice when nothing is running.
+    if incident is None:
+        raise HTTPException(409, "No investigation on this server. Break it and POST /investigate first.")
+    if incident.state != "done":
         raise HTTPException(409, "There are no fix options yet. Wait until GET /incident says done.")
     final = incident.result["final"]
     options = final.get("options", []) if final else []
@@ -354,7 +409,10 @@ def decide(option: int, session: Session = Depends(current_session)) -> dict:
     if result["warnings"]:
         lines += ["Watch out:"] + [f"  {line}" for line in result["warnings"]]
     incident.add_step("verdict", "\n".join(lines))
-    return {**incident_view(incident), "server": server_status(session.server)}
+    # The answer first: after deciding, "did it work?" matters most, and it was hidden below ~30 steps.
+    # The whole incident follows (its own "verdict"/"decision" keys keep these first places).
+    return {"verdict": result["verdict"], "decision": incident.decision["note"],
+            **incident_view(incident), "server": server_status(session.server)}
 
 
 @app.get("/postmortem", response_class=PlainTextResponse)
