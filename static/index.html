@@ -1,0 +1,120 @@
+<!doctype html>
+<!--
+  index.html
+  The web page: what a visitor (or a judge) sees. Only the layout lives here:
+  the look is in style.css, and app.js fills the empty boxes with data from the API.
+  The sections are numbered in the order a visitor uses them, so nobody has to explain the page.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- Without this line, phones show a tiny zoomed-out desktop page. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lifeguard: AI on-call engineer</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>Lifeguard</div>
+    <p class="tagline">An AI on-call engineer for a small online shop's server.
+      Break the server, watch the agent investigate, and approve the fix yourself.</p>
+  </header>
+
+  <main>
+    <!-- 1. Break the server -->
+    <section class="panel" id="break-panel">
+      <div class="panel-head">
+        <h2><span class="step">1</span> Break the server</h2>
+        <button id="reset" class="secondary" type="button">Reset server</button>
+      </div>
+      <p class="muted">Pick a fault, describe your own, or let us surprise you.
+        The agent never sees what you picked, only what the customers complain about.</p>
+
+      <h3>Ready-made faults</h3>
+      <!-- app.js puts one button per preset in here (from GET /presets). -->
+      <div id="presets" class="buttons"></div>
+
+      <h3>Your own fault</h3>
+      <form id="custom-form" class="custom">
+        <input id="custom-idea" maxlength="300" autocomplete="off"
+               placeholder="e.g. the cache runs out of memory and gets killed">
+        <button type="submit">Build it</button>
+      </form>
+
+      <h3>Or</h3>
+      <button id="random" type="button" class="secondary">Surprise me</button>
+
+      <!-- Short messages for the visitor: "Building your fault...", the guard's refusal, errors. -->
+      <div id="break-message" class="message" hidden></div>
+    </section>
+
+    <!-- The server, live -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Your server</h2>
+        <span id="updated" class="muted"></span>
+      </div>
+
+      <!-- Shown only while something is broken: what the customers are complaining about. -->
+      <div id="alert" class="alert" hidden></div>
+
+      <!-- app.js puts one card per container in here. -->
+      <div id="containers" class="cards"></div>
+
+      <div class="columns">
+        <div>
+          <h3>Health checks</h3>
+          <div id="endpoints" class="rows"></div>
+        </div>
+        <div>
+          <h3>Disks</h3>
+          <div id="disks" class="rows"></div>
+        </div>
+        <div>
+          <h3>Scheduled jobs</h3>
+          <div id="jobs" class="rows"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. The agent investigates: its steps appear live (Server-Sent Events from /incident/stream). -->
+    <section class="panel" id="agent-panel">
+      <div class="panel-head">
+        <h2><span class="step">2</span> The agent investigates</h2>
+        <span id="agent-clock" class="muted"></span>
+      </div>
+      <p class="muted">Break the server first. Then start the investigation and watch the agent work:
+        Nemotron Nano takes a first look, Super investigates with tools and a web search,
+        and Ultra makes the final call.</p>
+      <button id="investigate" type="button" disabled>Start the investigation</button>
+      <!-- app.js adds one entry per agent step in here. -->
+      <ol id="timeline" class="timeline"></ol>
+      <div id="agent-message" class="message" hidden></div>
+    </section>
+
+    <!-- 3. You decide: Ultra's fix options as cards. Nothing changes on the server without a human's approval. -->
+    <section class="panel" id="decide-panel" hidden>
+      <h2><span class="step">3</span> You decide</h2>
+      <div id="root-cause" class="root-cause"></div>
+      <div id="options" class="options"></div>
+      <div class="decide-actions">
+        <button id="reject" type="button" class="secondary">Reject all, change nothing</button>
+      </div>
+    </section>
+
+    <!-- 4. Result: did the fix work? Checked on the server, not taken from the AI's word. -->
+    <section class="panel" id="result-panel" hidden>
+      <h2><span class="step">4</span> Result</h2>
+      <div id="verdict" class="verdict"></div>
+      <div id="verdict-details" class="verdict-details"></div>
+      <p class="links">
+        <a href="/postmortem" target="_blank" rel="noopener">Read the postmortem</a>
+        <a href="/postmortem" download>Download it (.md)</a>
+      </p>
+      <p class="muted">Try another one: press <strong>Reset server</strong> at the top.</p>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

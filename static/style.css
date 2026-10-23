@@ -1,0 +1,273 @@
+/*
+  style.css
+  The look of the page. Colours are defined once at the top as variables, so the
+  whole page changes together, and there is a dark version for people whose
+  computer is set to dark mode.
+*/
+
+:root {
+  --bg: #f4f6f8;
+  --panel: #ffffff;
+  --text: #1c2430;
+  --muted: #6b7684;
+  --line: #e1e5ea;
+  --ok: #1f9d55;
+  --ok-soft: #e3f5ea;
+  --warn: #c77700;
+  --warn-soft: #fff1dc;
+  --bad: #d64545;
+  --bad-soft: #fde8e8;
+  --accent: #2563eb;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f141a;
+    --panel: #18202a;
+    --text: #e6ebf1;
+    --muted: #8d99a8;
+    --line: #2a3542;
+    --ok: #3ccf7a;
+    --ok-soft: #173525;
+    --warn: #f0a640;
+    --warn-soft: #3a2a12;
+    --bad: #f06a6a;
+    --bad-soft: #3d1c1f;
+    --accent: #6b9bff;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* The "hidden" attribute must always win, even over a display rule further down. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.45;
+}
+
+main { max-width: 1100px; margin: 0 auto; padding: 0 16px 48px; }
+
+/* ---------- Header ---------- */
+
+.top { max-width: 1100px; margin: 0 auto; padding: 24px 16px 8px; }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 1.5rem; font-weight: 700; }
+/* A small red-and-white ring, like a life buoy. */
+.logo {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 6px solid var(--bad);
+  box-shadow: inset 0 0 0 2px var(--panel);
+}
+.tagline { margin: 6px 0 0; color: var(--muted); max-width: 640px; }
+
+/* ---------- Alert banner ---------- */
+
+.alert {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--bad-soft);
+  border-left: 5px solid var(--bad);
+}
+.alert strong { color: var(--bad); }
+/* After a fix that worked, the same banner turns green: the complaint is answered. */
+.alert.resolved { background: var(--ok-soft); border-left-color: var(--ok); }
+.alert.resolved strong { color: var(--ok); }
+
+/* ---------- Panels ---------- */
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 16px;
+}
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+h2 { margin: 0 0 12px; font-size: 1.15rem; }
+h3 { margin: 18px 0 8px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.muted { color: var(--muted); font-size: 0.85rem; }
+
+/* ---------- Container cards ---------- */
+
+/* As many cards per row as fit, each at least 210px wide: 4 on a laptop, 1 on a phone. */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+
+.card {
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--ok);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.card.warn { border-top-color: var(--warn); background: var(--warn-soft); }
+.card.bad { border-top-color: var(--bad); background: var(--bad-soft); }
+
+.card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+.role { color: var(--muted); font-size: 0.85rem; }
+.image { font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem; color: var(--muted); margin-top: 6px; }
+
+/* The small coloured label: Running / Restarting / Stopped. */
+.badge {
+  font-size: 0.75rem; font-weight: 600;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--ok-soft); color: var(--ok);
+}
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.bad { background: var(--bad-soft); color: var(--bad); }
+
+.facts { margin-top: 8px; font-size: 0.85rem; }
+
+/* ---------- Bars (memory, disk) ---------- */
+
+.bar { height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; margin-top: 4px; }
+.bar > span { display: block; height: 100%; background: var(--ok); }
+.bar.warn > span { background: var(--warn); }
+.bar.bad > span { background: var(--bad); }
+
+/* ---------- Health checks, disks, jobs ---------- */
+
+/* Three columns on a laptop, stacked on a phone. */
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 24px; }
+.rows { display: grid; gap: 8px; }
+.row { font-size: 0.9rem; }
+.row-line { display: flex; justify-content: space-between; gap: 8px; }
+.ok-text { color: var(--ok); font-weight: 600; }
+.warn-text { color: var(--warn); font-weight: 600; }
+.bad-text { color: var(--bad); font-weight: 600; }
+
+/* ---------- Step numbers in the headings ---------- */
+
+.step {
+  display: inline-grid; place-items: center;
+  width: 26px; height: 26px; margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: 0.9rem;
+}
+
+/* ---------- Buttons and the custom fault box ---------- */
+
+button {
+  font: inherit; font-size: 0.9rem; font-weight: 600;
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent); color: #fff;
+  cursor: pointer;
+}
+button.secondary { background: transparent; color: var(--accent); }
+button:hover:not(:disabled) { filter: brightness(1.1); }
+/* Greyed out while it can't be used, e.g. while the server is already broken. */
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.buttons button { background: var(--panel); color: var(--text); border-color: var(--line); font-weight: 500; }
+.buttons button:hover:not(:disabled) { border-color: var(--accent); }
+
+.custom { display: flex; gap: 8px; flex-wrap: wrap; }
+.custom input {
+  flex: 1 1 260px;
+  font: inherit; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--text);
+}
+
+/* ---------- Messages under the break panel ---------- */
+
+.message { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: var(--bg); }
+.message.bad { background: var(--bad-soft); color: var(--bad); }
+.message.ok { background: var(--ok-soft); color: var(--ok); }
+
+/* ---------- Agent timeline ---------- */
+
+.timeline { list-style: none; margin: 14px 0 0; padding: 0 0 0 18px; border-left: 2px solid var(--line); }
+.timeline:empty { display: none; }
+.timeline li { position: relative; margin: 0 0 12px; padding-left: 12px; }
+/* The dot on the line in front of each step. */
+.timeline li::before {
+  content: ""; position: absolute; left: -25px; top: 6px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--panel); border: 2px solid var(--accent);
+}
+.timeline li.warn::before { border-color: var(--warn); background: var(--warn); }
+.timeline li.bad::before { border-color: var(--bad); background: var(--bad); }
+.timeline li.ok::before { border-color: var(--ok); background: var(--ok); }
+
+.step-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.step-time { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.step-title { font-weight: 600; }
+.code { font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
+
+/* Which Nemotron model did this step. */
+.model { font-size: 0.7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; color: #fff; }
+.model.nano { background: #76b900; }   /* NVIDIA green */
+.model.super { background: #2563eb; }
+.model.ultra { background: #7c3aed; }
+.model.code-check { background: var(--muted); }
+
+/* Long tool outputs and reports fold away; click to open. */
+details { margin-top: 4px; }
+summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
+pre {
+  margin: 6px 0 0; padding: 10px; max-height: 320px; overflow: auto;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem;
+  white-space: pre-wrap; word-break: break-word;
+}
+.step-text { margin-top: 4px; white-space: pre-wrap; }
+
+#investigate { margin-top: 4px; }
+
+/* ---------- 3. You decide: option cards ---------- */
+
+.root-cause { padding: 12px 14px; border-radius: 8px; background: var(--bg); margin-bottom: 14px; }
+.root-cause p { margin: 6px 0 0; }
+
+.options { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.option { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.option.recommended { border: 2px solid var(--accent); }
+.option.blocked { opacity: 0.6; border-style: dashed; }
+.option.chosen { border: 2px solid var(--ok); background: var(--ok-soft); }
+.option h4 { margin: 0; font-size: 1rem; }
+.option ul { margin: 0; padding-left: 18px; font-size: 0.9rem; }
+.option .pros li::marker { content: "✓  "; color: var(--ok); }
+.option .cons li::marker { content: "✗  "; color: var(--bad); }
+/* overflow-wrap: long file paths break onto the next line instead of running into the next card. */
+.option .steps { font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem; overflow-wrap: anywhere; }
+.option .label { font-size: 0.75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.option button { margin-top: auto; }
+/* The second click: "Click again to apply" stands out so nobody applies a fix by accident. */
+button.armed { background: var(--warn); border-color: var(--warn); color: #fff; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--bg); color: var(--muted); }
+.tag.ok { background: var(--ok-soft); color: var(--ok); }
+.tag.warn { background: var(--warn-soft); color: var(--warn); }
+.tag.bad { background: var(--bad-soft); color: var(--bad); }
+.tag.accent { background: var(--accent); color: #fff; }
+
+.decide-actions { margin-top: 12px; }
+
+/* ---------- 4. Result ---------- */
+
+.verdict { font-size: 1.8rem; font-weight: 800; padding: 14px 16px; border-radius: var(--radius); }
+.verdict.ok { background: var(--ok-soft); color: var(--ok); }
+.verdict.warn { background: var(--warn-soft); color: var(--warn); }
+.verdict.bad { background: var(--bad-soft); color: var(--bad); }
+.verdict small { display: block; font-size: 0.9rem; font-weight: 500; color: var(--text); margin-top: 4px; }
+.verdict-details pre { max-height: none; }
+.links { display: flex; gap: 16px; flex-wrap: wrap; }
+a { color: var(--accent); }
+
+/* A small spinning circle next to "Building your fault...". */
+.spinner {
+  display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px;
+  border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

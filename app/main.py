@@ -3,7 +3,8 @@ main.py
 The web API: everything the terminal script does, available to a browser.
 
 Run it with:  uvicorn app.main:app --reload
-Then open http://127.0.0.1:8000/docs to try every endpoint by hand.
+Then open http://127.0.0.1:8000 for the web page (files in static/),
+or http://127.0.0.1:8000/docs to try every endpoint by hand.
 
 This file only receives requests and sends answers. The real work stays in the
 other files (simulator, agent, approval, fixes), so the terminal and the web page
@@ -15,9 +16,11 @@ import json
 import threading
 from datetime import datetime, timedelta
 from enum import Enum
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.agent import format_step, handle_incident
@@ -56,6 +59,17 @@ app = FastAPI(
     title="Lifeguard Agent",
     description="AI SRE for small teams on one Docker host.",
 )
+
+# The web page's files (HTML, CSS, JavaScript). Found from this file's own place, not from the
+# folder uvicorn was started in, so the page works wherever the server is started from.
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+def home() -> FileResponse:
+    """The web page. include_in_schema=False: it's a page for people, not an API endpoint, so /docs leaves it out."""
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 def current_session(request: Request, response: Response) -> Session:
