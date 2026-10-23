@@ -383,6 +383,12 @@ def final_call(server: Server, alert: str, report: str, evidence: list, usage: U
     return result
 
 
+def format_step(step: dict) -> str:
+    """One fix step as readable text, e.g. disable_job(job=db-backup). Used by the terminal and the web."""
+    details = ", ".join(f"{key}={value}" for key, value in step.items() if key != "type")
+    return f"{step.get('type')}({details})"
+
+
 def format_final_call(result: dict) -> str:
     """Turn Ultra's final call into readable text for the terminal timeline."""
     agrees = "agrees with" if result.get("agrees_with_investigator") else "CORRECTS"
@@ -394,8 +400,7 @@ def format_final_call(result: dict) -> str:
         star = "  <- RECOMMENDED" if option.get("recommended") else ""
         lines += ["", f"OPTION {number}: {option.get('title')}{star}", "  steps:"]
         for step_number, step in enumerate(option["steps"], start=1):
-            details = ", ".join(f"{key}={value}" for key, value in step.items() if key != "type")
-            lines.append(f"    {step_number}. {step.get('type')}({details})")
+            lines.append(f"    {step_number}. {format_step(step)}")
         lines += [f"  pros:   {'; '.join(option['pros'])}",
                   f"  cons:   {'; '.join(option['cons'])}",
                   f"  undo:   {option['undo']}",

@@ -15,7 +15,7 @@ from enum import Enum
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 
-from app.agent import handle_incident
+from app.agent import format_step, handle_incident
 from app.approval import approve_option
 from app.faults import PRESETS, apply_fault
 from app.fixes import apply_fix, verify
@@ -135,13 +135,54 @@ def run_agent(server: Server, incident: Incident) -> None:
         incident.state = "failed"
 
 
+def final_call_view(final: dict) -> dict:
+    """Ultra's fix options as separate fields, so a human can read them before POST /decide.
+
+    The same facts as the "final_call" step, but that step is one long text for the timeline.
+    Here every option has its own number, steps, pros, cons and risk: readable in /docs now,
+    and the web page (Day 8) turns them into option cards with an Approve button.
+    """
+    options = [{"number": number,
+                "title": option.get("title"),
+                "recommended": bool(option.get("recommended")),
+                "steps": [format_step(step) for step in option["steps"]],
+                "pros": option["pros"],
+                "cons": option["cons"],
+                "undo": option["undo"],
+                "can_be_undone": option["reversible"],
+                "risk": option["risk"]}
+               for number, option in enumerate(final["options"], start=1)]
+
+    if any(option["recommended"] for option in options):
+        why = final.get("why_recommended")
+    else:
+        # Same rule as the terminal: don't show praise for an option safety took away.
+        why = ("Ultra's recommended option was blocked by the safety check, so none of these is "
+               "recommended. Compare the cons before picking.")
+    if options:
+        how_to_decide = (f"POST /decide/{{option}} with a number from 1 to {len(options)} to approve "
+                         "that option, or 0 to reject them all.")
+    else:
+        how_to_decide = "No safe option is left. POST /decide/0 to reject, and fix it by hand."
+
+    return {"root_cause": final.get("root_cause"),
+            "confidence": final.get("confidence"),
+            "options": options,
+            "why_recommended": why,
+            "blocked": final.get("blocked", []),  # each one {"title", "reason"}: the human sees what safety stopped
+            "how_to_decide": how_to_decide}
+
+
 def incident_view(incident: Incident) -> dict:
-    """The incident as JSON for the page: state, timeline so far, and at the end the cost line."""
+    """The incident as JSON for the page: state, timeline so far, and at the end the cost and fix options."""
     view = {"state": incident.state, "alert": incident.alert,
             "started": incident.started.isoformat(timespec="seconds"),
             "steps": incident.steps, "error": incident.error}
     if incident.result:
         view["cost"] = incident.result["usage"].summary()
+        # The final call can be None when Ultra's reply couldn't be read; then there is nothing to choose.
+        if incident.result.get("final"):
+            view["final_call"] = final_call_view(incident.result["final"])
     if incident.decision:
         view["decision"] = incident.decision["note"]
         view["verdict"] = incident.verification["verdict"]
@@ -176,6 +217,8 @@ def incident(session: Session = Depends(current_session)) -> dict:
 @app.post("/decide/{option}")
 def decide(option: int, session: Session = Depends(current_session)) -> dict:
     """The human's decision: approve fix option 1, 2 or 3, or 0 to reject them all.
+
+    Read the options first: GET /incident shows them under "final_call" at the bottom.
 
     An approved fix is applied to the visitor's server and checked right away, like in the terminal:
     FIXED, FIXED FOR NOW or NOT FIXED. A rejection gets a verdict too (nothing changed, so NOT FIXED).
