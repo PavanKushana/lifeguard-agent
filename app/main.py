@@ -15,13 +15,17 @@ from enum import Enum
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 
 from app.agent import format_step, handle_incident
 from app.approval import approve_option
+from app.fault_maker import make_fault, random_idea
 from app.faults import PRESETS, apply_fault
 from app.fixes import apply_fix, verify
+from app.guard import check_fault_text
+from app.llm import Usage
 from app.postmortem import build_postmortem
-from app.sessions import COOKIE_NAME, IDLE_LIMIT, Incident, Session, get_or_create
+from app.sessions import COOKIE_NAME, IDLE_LIMIT, FaultBuild, Incident, Session, get_or_create
 from app.simulator import Server
 
 # The preset ids as a fixed list of choices, so /docs shows a dropdown instead of a text box
@@ -31,6 +35,15 @@ PresetId = Enum("PresetId", {preset_id: preset_id for preset_id in PRESETS}, typ
 
 # Only one decision at a time: a double click on "Approve" must not apply the same fix twice.
 decide_lock = threading.Lock()
+# Breaking and resetting take turns: a fault finishing in the background at the same moment
+# as a reset must not land half on the old server and half on the new one.
+break_lock = threading.Lock()
+
+
+class CustomIdea(BaseModel):
+    """The visitor's fault idea, in their own words."""
+
+    idea: str = Field(examples=["the cache runs out of memory and gets killed"])
 
 app = FastAPI(
     title="Lifeguard Agent",
@@ -108,19 +121,108 @@ def break_preset(preset_id: PresetId, session: Session = Depends(current_session
     An unknown id never reaches this function: FastAPI answers 422 and lists the allowed ids.
     """
     preset_id = preset_id.value
+    with break_lock:
+        check_can_break(session)
+        session.fault = PRESETS[preset_id]
+        session.fault_name = preset_id
+        session.build = None  # an old failed build has nothing to say about this fault
+        apply_fault(session.server, session.fault)
+    return {"alert": session.fault["alert"], **server_status(session.server)}
+
+
+def check_can_break(session: Session) -> None:
+    """Refuse a second fault while one is on the server or still being built (409)."""
     # One incident at a time: a second fault on top would mix two problems and two hidden truths.
     if session.fault is not None:
         raise HTTPException(409, "This server is already broken. Call POST /reset first.")
-    session.fault = PRESETS[preset_id]
-    session.fault_name = preset_id
-    apply_fault(session.server, session.fault)
-    return {"alert": session.fault["alert"], **server_status(session.server)}
+    if session.build is not None and session.build.state == "building":
+        raise HTTPException(409, "A fault is still being built. Follow it with GET /break/status, or POST /reset.")
+
+
+def build_view(session: Session) -> dict:
+    """The fault build as JSON for the page. Never the fault itself: only the alert, once it's ready."""
+    build = session.build
+    return {"kind": build.kind, "idea": build.idea, "state": build.state, "message": build.message,
+            "started": build.started.isoformat(timespec="seconds"), "cost": build.cost,
+            "alert": session.fault["alert"] if build.state == "ready" else None}
+
+
+def build_fault(session: Session, build: FaultBuild, idea: str, usage: Usage) -> None:
+    """Let Ultra build the fault, then break the visitor's server with it. Runs in the background.
+
+    Same steps as the terminal's --custom and --random: Ultra writes the fault, validator.py
+    checks it, and Ultra gets one more try if the checks find problems.
+    """
+    try:
+        fault, _ = make_fault(idea, usage)
+        failure = "Couldn't build this fault, please try again or describe it differently."
+    except Exception as error:  # e.g. Token Factory down
+        fault, failure = None, f"Couldn't build this fault ({type(error).__name__}), please try again."
+    build.cost = usage.summary()
+
+    with break_lock:
+        # The visitor may have pressed reset while Ultra worked: then this fault is thrown away.
+        if session.build is not build:
+            return
+        if fault is None:
+            build.state, build.message = "failed", failure
+            return
+        session.fault, session.fault_name = fault, build.kind
+        apply_fault(session.server, fault)
+        build.state = "ready"
+        build.message = "Your server is broken now. Read the alert, then POST /investigate."
+
+
+def start_build(session: Session, kind: str, idea: str, usage: Usage) -> dict:
+    """Start building a custom or random fault in the background and answer at once."""
+    with break_lock:
+        # Checked again: the guard took a few seconds, and a second click may have got in first.
+        check_can_break(session)
+        # The random idea stays secret (idea=None): it would tell the visitor where to look.
+        session.build = FaultBuild(kind=kind, idea=idea if kind == "custom" else None)
+    # daemon=True: if the API stops, it doesn't wait for a half-built fault.
+    threading.Thread(target=build_fault, args=(session, session.build, idea, usage), daemon=True).start()
+    return build_view(session)
+
+
+@app.post("/break/custom")
+def break_custom(body: CustomIdea, session: Session = Depends(current_session)) -> dict:
+    """Break the server with a fault the visitor describes, e.g. "the cache runs out of memory".
+
+    First the guard checks the text (free rules, then Nano), so only faults for our server get built;
+    a refusal comes back at once as 400 with the reason. Then Ultra builds the fault in the
+    background (10 seconds to 2 minutes): follow it with GET /break/status.
+    """
+    check_can_break(session)  # before the guard, so a refused break costs no tokens
+    usage = Usage()
+    verdict = check_fault_text(body.idea, usage)
+    if not verdict["allowed"]:
+        raise HTTPException(400, verdict["reason"])
+    return start_build(session, "custom", body.idea.strip(), usage)
+
+
+@app.post("/break/random")
+def break_random(session: Session = Depends(current_session)) -> dict:
+    """ "Surprise me": Ultra builds a fault from one of our own ideas, kept secret until the end.
+
+    No guard needed, the idea is ours. Follow the build with GET /break/status.
+    """
+    return start_build(session, "random", random_idea(), Usage())
+
+
+@app.get("/break/status")
+def break_status(session: Session = Depends(current_session)) -> dict:
+    """How the custom or random fault is coming along: "building", then "ready" (with the alert) or "failed"."""
+    if session.build is None:
+        raise HTTPException(404, "No custom or random fault started. (Presets break at once, no build needed.)")
+    return build_view(session)
 
 
 @app.post("/reset")
 def reset(session: Session = Depends(current_session)) -> dict:
     """Give the visitor a fresh healthy server, whatever state the old one was in."""
-    session.reset()
+    with break_lock:
+        session.reset()
     return {"alert": None, **server_status(session.server)}
 
 
@@ -199,6 +301,8 @@ def investigate(session: Session = Depends(current_session)) -> dict:
     starts it, and the page follows the steps with GET /incident.
     """
     if session.fault is None:
+        if session.build is not None and session.build.state == "building":
+            raise HTTPException(409, "Your fault is still being built. Wait until GET /break/status says ready.")
         raise HTTPException(409, "Nothing is broken yet. Break the server first.")
     if session.incident is not None:
         raise HTTPException(409, "The agent already ran on this fault. Call POST /reset to start again.")

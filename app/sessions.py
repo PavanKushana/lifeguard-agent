@@ -57,6 +57,25 @@ class Incident:
 
 
 @dataclass
+class FaultBuild:
+    """Ultra building a custom or random fault in the background (it takes 10 seconds to 2 minutes).
+
+    Only short facts are kept for the page. The fault itself goes to the Session when it's ready,
+    and is never sent to the browser, so the person approving the fix doesn't know the answer either.
+    """
+
+    # "custom" (the visitor's own idea) or "random" (one of ours, kept secret: it would say where to look).
+    kind: str
+    # The visitor's idea, shown back to them. None for random.
+    idea: str | None
+    started: datetime = field(default_factory=datetime.now)
+    # "building" while Ultra works, then "ready" (the server is broken now) or "failed".
+    state: str = "building"
+    message: str = "Building your fault, this can take a minute..."
+    cost: str | None = None
+
+
+@dataclass
 class Session:
     """One visitor: their own server, and the fault that broke it (None while it's healthy)."""
 
@@ -68,6 +87,8 @@ class Session:
     fault: dict | None = None
     # Short name for saved files: the preset id, "custom" or "random".
     fault_name: str | None = None
+    # A custom or random fault being built. None for presets, which are ready at once.
+    build: FaultBuild | None = None
     # The agent's run on this fault. None until the visitor starts the investigation.
     incident: Incident | None = None
 
@@ -76,6 +97,8 @@ class Session:
         self.server = Server()
         self.fault = None
         self.fault_name = None
+        # Same idea for a fault still being built: it finishes on its own object and is thrown away.
+        self.build = None
         # An agent still running keeps writing to its own Incident object, which nobody
         # looks at any more, so it can't mix old steps into the new server's timeline.
         self.incident = None
