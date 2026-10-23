@@ -26,6 +26,33 @@ MAX_SESSIONS = 200
 
 
 @dataclass
+class Incident:
+    """One run of the agent on a broken server: its live timeline and, at the end, its results.
+
+    The agent runs in the background and adds each step to `steps` as it happens, so the
+    page can show them while the agent is still working.
+    """
+
+    alert: str
+    started: datetime = field(default_factory=datetime.now)
+    # "running" while the agent works, then "done" (results are in) or "failed" (an error stopped it).
+    state: str = "running"
+    # Each step is {"kind": "triage" / "tool_call" / ..., "text": ..., "at": "10:47:34"}, oldest first.
+    steps: list[dict] = field(default_factory=list)
+    # What handle_incident() returned: triage, report, final call, evidence, usage. None until done.
+    result: dict | None = None
+    error: str | None = None
+    # The human's decision (from approval.approve_option), what the fix did, and the verdict. None until decided.
+    decision: dict | None = None
+    done: list[str] = field(default_factory=list)
+    verification: dict | None = None
+
+    def add_step(self, kind: str, text: str) -> None:
+        """Record one step of the agent. Passed to the agent as its on_step, like print_step in the terminal."""
+        self.steps.append({"kind": kind, "text": text, "at": f"{datetime.now():%H:%M:%S}"})
+
+
+@dataclass
 class Session:
     """One visitor: their own server, and the fault that broke it (None while it's healthy)."""
 
@@ -37,12 +64,17 @@ class Session:
     fault: dict | None = None
     # Short name for saved files: the preset id, "custom" or "random".
     fault_name: str | None = None
+    # The agent's run on this fault. None until the visitor starts the investigation.
+    incident: Incident | None = None
 
     def reset(self) -> None:
         """Throw the broken server away and start again with a healthy one."""
         self.server = Server()
         self.fault = None
         self.fault_name = None
+        # An agent still running keeps writing to its own Incident object, which nobody
+        # looks at any more, so it can't mix old steps into the new server's timeline.
+        self.incident = None
 
 
 # All sessions by id. The lock is there because FastAPI runs requests in several threads at once,

@@ -10,18 +10,25 @@ other files (simulator, agent, approval, fixes), so the terminal and the web pag
 run exactly the same code.
 """
 
+import threading
 from enum import Enum
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 
+from app.agent import handle_incident
+from app.approval import approve_option
 from app.faults import PRESETS, apply_fault
-from app.sessions import COOKIE_NAME, IDLE_LIMIT, Session, get_or_create
+from app.fixes import apply_fix, verify
+from app.sessions import COOKIE_NAME, IDLE_LIMIT, Incident, Session, get_or_create
 from app.simulator import Server
 
 # The preset ids as a fixed list of choices, so /docs shows a dropdown instead of a text box
 # and a typo is refused before our code runs. Built from PRESETS, so a new preset added in
 # faults.py shows up here by itself, nothing to change in this file.
 PresetId = Enum("PresetId", {preset_id: preset_id for preset_id in PRESETS}, type=str)
+
+# Only one decision at a time: a double click on "Approve" must not apply the same fix twice.
+decide_lock = threading.Lock()
 
 app = FastAPI(
     title="Lifeguard Agent",
@@ -113,3 +120,89 @@ def reset(session: Session = Depends(current_session)) -> dict:
     """Give the visitor a fresh healthy server, whatever state the old one was in."""
     session.reset()
     return {"alert": None, **server_status(session.server)}
+
+
+def run_agent(server: Server, incident: Incident) -> None:
+    """Run the whole agent (triage, investigation, final call) and store the results. Runs in the background.
+
+    Any error is caught and recorded, so the page can show "failed" instead of waiting forever.
+    """
+    try:
+        incident.result = handle_incident(server, incident.alert, incident.add_step)
+        incident.state = "done"
+    except Exception as error:  # e.g. Token Factory down, or a missing API key
+        incident.error = f"{type(error).__name__}: {error}"
+        incident.state = "failed"
+
+
+def incident_view(incident: Incident) -> dict:
+    """The incident as JSON for the page: state, timeline so far, and at the end the cost line."""
+    view = {"state": incident.state, "alert": incident.alert,
+            "started": incident.started.isoformat(timespec="seconds"),
+            "steps": incident.steps, "error": incident.error}
+    if incident.result:
+        view["cost"] = incident.result["usage"].summary()
+    if incident.decision:
+        view["decision"] = incident.decision["note"]
+        view["verdict"] = incident.verification["verdict"]
+    return view
+
+
+@app.post("/investigate")
+def investigate(session: Session = Depends(current_session)) -> dict:
+    """Start the agent on the visitor's broken server. Answers at once; the agent keeps working in the background.
+
+    The agent takes 20-40 seconds. A request that waited that long would look frozen, so this only
+    starts it, and the page follows the steps with GET /incident.
+    """
+    if session.fault is None:
+        raise HTTPException(409, "Nothing is broken yet. Break the server first.")
+    if session.incident is not None:
+        raise HTTPException(409, "The agent already ran on this fault. Call POST /reset to start again.")
+    session.incident = Incident(alert=session.fault["alert"])
+    # daemon=True: if the API stops, it doesn't wait for a half-finished agent.
+    threading.Thread(target=run_agent, args=(session.server, session.incident), daemon=True).start()
+    return incident_view(session.incident)
+
+
+@app.get("/incident")
+def incident(session: Session = Depends(current_session)) -> dict:
+    """The agent's timeline so far. Call it again to see new steps, until state is "done" or "failed"."""
+    if session.incident is None:
+        raise HTTPException(404, "No investigation yet. Call POST /investigate first.")
+    return incident_view(session.incident)
+
+
+@app.post("/decide/{option}")
+def decide(option: int, session: Session = Depends(current_session)) -> dict:
+    """The human's decision: approve fix option 1, 2 or 3, or 0 to reject them all.
+
+    An approved fix is applied to the visitor's server and checked right away, like in the terminal:
+    FIXED, FIXED FOR NOW or NOT FIXED. A rejection gets a verdict too (nothing changed, so NOT FIXED).
+    """
+    incident = session.incident
+    if incident is None or incident.state != "done":
+        raise HTTPException(409, "There are no fix options yet. Wait until GET /incident says done.")
+    final = incident.result["final"]
+    options = final.get("options", []) if final else []
+    if not 0 <= option <= len(options):
+        raise HTTPException(400, f"There is no option {option}. Choose 1 to {len(options)}, or 0 to reject all.")
+
+    with decide_lock:
+        if incident.decision is not None:
+            raise HTTPException(409, "A decision was already made for this incident. Call POST /reset to start again.")
+        # The same function the terminal uses: it runs the safety check again before approving.
+        incident.decision = approve_option(session.server, final, option, approved_by="web visitor")
+        incident.done = apply_fix(session.server, incident.decision)
+
+    if incident.done:
+        incident.add_step("apply", "\n".join(f"{number}. {line}" for number, line in enumerate(incident.done, 1)))
+    incident.verification = verify(session.server, session.fault)
+    result = incident.verification
+    lines = [result["verdict"], f"Decision: {incident.decision['note']}", "", "Users OK?"]
+    lines += [f"  {line}" for line in result["users_ok"]] + ["Stays fixed?"]
+    lines += [f"  {line}" for line in result["stays_fixed"]]
+    if result["warnings"]:
+        lines += ["Watch out:"] + [f"  {line}" for line in result["warnings"]]
+    incident.add_step("verdict", "\n".join(lines))
+    return {**incident_view(incident), "server": server_status(session.server)}
