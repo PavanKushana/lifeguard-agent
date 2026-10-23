@@ -2,3 +2,5 @@ openai
 python-dotenv
 tavily-python
 pytest
+fastapi
+uvicorn
