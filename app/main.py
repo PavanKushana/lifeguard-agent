@@ -14,11 +14,13 @@ import threading
 from enum import Enum
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import PlainTextResponse
 
 from app.agent import format_step, handle_incident
 from app.approval import approve_option
 from app.faults import PRESETS, apply_fault
 from app.fixes import apply_fix, verify
+from app.postmortem import build_postmortem
 from app.sessions import COOKIE_NAME, IDLE_LIMIT, Incident, Session, get_or_create
 from app.simulator import Server
 
@@ -249,3 +251,25 @@ def decide(option: int, session: Session = Depends(current_session)) -> dict:
         lines += ["Watch out:"] + [f"  {line}" for line in result["warnings"]]
     incident.add_step("verdict", "\n".join(lines))
     return {**incident_view(incident), "server": server_status(session.server)}
+
+
+@app.get("/postmortem", response_class=PlainTextResponse)
+def postmortem(session: Session = Depends(current_session)) -> PlainTextResponse:
+    """The incident report in markdown: what happened, when, why, what fixed it, what's next.
+
+    Only after POST /decide, because the decision and the verdict are part of the story.
+    Built by the same code as the terminal's postmortem, from what was recorded, so it costs no tokens.
+    """
+    incident = session.incident
+    if incident is None or incident.decision is None:
+        raise HTTPException(409, "No decision yet. Run the incident and POST /decide first.")
+    if incident.verification is None:  # the fix is applied but the check is still running (a split second)
+        raise HTTPException(409, "The fix is still being checked. Try again in a moment.")
+
+    text = build_postmortem({**incident.result, "alert": incident.alert, "started": incident.started,
+                             "times": incident.times, "decision": incident.decision, "done": incident.done,
+                             "verification": incident.verification})
+    # "inline" shows the text in /docs and in the browser; the filename is used if someone saves it.
+    filename = f"{incident.started:%Y-%m-%d_%H%M}_{session.fault_name}.md"
+    return PlainTextResponse(text, media_type="text/markdown; charset=utf-8",
+                             headers={"Content-Disposition": f'inline; filename="{filename}"'})

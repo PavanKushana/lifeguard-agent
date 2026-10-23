@@ -39,6 +39,8 @@ class Incident:
     state: str = "running"
     # Each step is {"kind": "triage" / "tool_call" / ..., "text": ..., "at": "10:47:34"}, oldest first.
     steps: list[dict] = field(default_factory=list)
+    # When each kind of step FIRST happened ("report", "final_call", "verdict", ...), for the postmortem's timeline.
+    times: dict[str, datetime] = field(default_factory=dict)
     # What handle_incident() returned: triage, report, final call, evidence, usage. None until done.
     result: dict | None = None
     error: str | None = None
@@ -49,7 +51,9 @@ class Incident:
 
     def add_step(self, kind: str, text: str) -> None:
         """Record one step of the agent. Passed to the agent as its on_step, like print_step in the terminal."""
-        self.steps.append({"kind": kind, "text": text, "at": f"{datetime.now():%H:%M:%S}"})
+        now = datetime.now()
+        self.times.setdefault(kind, now)  # setdefault: a later step of the same kind keeps the first time
+        self.steps.append({"kind": kind, "text": text, "at": f"{now:%H:%M:%S}"})
 
 
 @dataclass
