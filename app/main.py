@@ -13,6 +13,7 @@ run exactly the same code.
 
 import asyncio
 import json
+import logging
 import threading
 from datetime import datetime, timedelta
 from enum import Enum
@@ -29,7 +30,7 @@ from app.fault_maker import make_fault, random_idea
 from app.faults import PRESETS, apply_fault
 from app.fixes import apply_fix, verify
 from app.guard import check_fault_text
-from app.llm import Usage
+from app.llm import Usage, describe_error
 from app.postmortem import build_postmortem
 from app.sessions import COOKIE_NAME, IDLE_LIMIT, FaultBuild, Incident, Session, get_or_create
 from app.simulator import Server
@@ -48,6 +49,8 @@ STREAM_LIMIT = timedelta(minutes=5)
 # Breaking and resetting take turns: a fault finishing in the background at the same moment
 # as a reset must not land half on the old server and half on the new one.
 break_lock = threading.Lock()
+# uvicorn's own logger: what's written here shows up in the terminal uvicorn runs in.
+log = logging.getLogger("uvicorn.error")
 
 
 class CustomIdea(BaseModel):
@@ -177,8 +180,10 @@ def build_fault(session: Session, build: FaultBuild, idea: str, usage: Usage) ->
     try:
         fault, _ = make_fault(idea, usage)
         failure = "Couldn't build this fault, please try again or describe it differently."
-    except Exception as error:  # e.g. Token Factory down
-        fault, failure = None, f"Couldn't build this fault ({type(error).__name__}), please try again."
+    except Exception as error:  # e.g. Token Factory busy or down
+        # The visitor gets one clear sentence; the terminal gets the full error to look into.
+        log.exception("Building a %s fault failed", build.kind)
+        fault, failure = None, f"Couldn't build this fault. {describe_error(error)}"
     build.cost = usage.summary()
 
     with break_lock:
@@ -255,8 +260,9 @@ def run_agent(server: Server, incident: Incident) -> None:
     try:
         incident.result = handle_incident(server, incident.alert, incident.add_step)
         incident.state = "done"
-    except Exception as error:  # e.g. Token Factory down, or a missing API key
-        incident.error = f"{type(error).__name__}: {error}"
+    except Exception as error:  # e.g. Token Factory busy or down, or a missing API key
+        log.exception("The agent stopped with an error")
+        incident.error = describe_error(error)
         incident.state = "failed"
 
 
