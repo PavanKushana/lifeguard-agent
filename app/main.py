@@ -167,8 +167,15 @@ def build_view(session: Session) -> dict:
     """The fault build as JSON for the page. Never the fault itself: only the alert, once it's ready."""
     build = session.build
     return {"kind": build.kind, "idea": build.idea, "state": build.state, "message": build.message,
-            "started": build.started.isoformat(timespec="seconds"), "cost": build.cost,
+            "note": build.note, "started": build.started.isoformat(timespec="seconds"), "cost": build.cost,
             "alert": session.fault["alert"] if build.state == "ready" else None}
+
+
+def log_rejected(kind: str, idea: str, tries: list[dict]) -> None:
+    """Write why Ultra's fault was rejected to the terminal. The visitor only gets one sentence."""
+    lines = [f"  try {number}: {problem}" for number, attempt in enumerate(tries, start=1)
+             for problem in attempt["problems"]]
+    log.warning("A %s fault failed our checks (idea: %s)\n%s", kind, idea, "\n".join(lines))
 
 
 def build_fault(session: Session, build: FaultBuild, idea: str, usage: Usage) -> None:
@@ -176,10 +183,25 @@ def build_fault(session: Session, build: FaultBuild, idea: str, usage: Usage) ->
 
     Same steps as the terminal's --custom and --random: Ultra writes the fault, validator.py
     checks it, and Ultra gets one more try if the checks find problems.
+    A random fault that still fails is started over once with a different idea: the visitor
+    didn't choose it, so another one is just as good. (In a test on 24 Oct, 1 build in 22 failed
+    the checks twice, and the visitor saw an error for a button that promised a surprise.)
     """
     try:
-        fault, _ = make_fault(idea, usage)
-        failure = "Couldn't build this fault, please try again or describe it differently."
+        fault, tries = make_fault(idea, usage)
+        if fault is None:
+            log_rejected(build.kind, idea, tries)
+        # Only if the visitor is still waiting for this build: after a reset, it would waste tokens.
+        if fault is None and build.kind == "random" and session.build is build:
+            build.note = "The first problem didn't pass our checks, so a different one is being set up."
+            idea = random_idea(other_than=idea)
+            fault, tries = make_fault(idea, usage)
+            if fault is None:
+                log_rejected(build.kind, idea, tries)
+        if build.kind == "random":
+            failure = "Couldn't set up a problem this time (it didn't pass our checks). Please press Pick one for me again."
+        else:
+            failure = "Couldn't build this fault: it didn't pass our checks. Please try again or describe it differently."
     except Exception as error:  # e.g. Token Factory busy or down
         # The visitor gets one clear sentence; the terminal gets the full error to look into.
         log.exception("Building a %s fault failed", build.kind)
@@ -315,9 +337,14 @@ def incident_view(incident: Incident) -> dict:
         # The final call can be None when Ultra's reply couldn't be read; then there is nothing to choose.
         if incident.result.get("final"):
             view["final_call"] = final_call_view(incident.result["final"])
-    if incident.decision:
+    # Both: in the split second between the decision and the end of the check there's no verdict yet.
+    if incident.decision and incident.verification:
         view["decision"] = incident.decision["note"]
         view["verdict"] = incident.verification["verdict"]
+        view["proof"] = incident.proof
+        # The checks behind the verdict, so the page can say in words what works again, what's
+        # still wrong (FIXED FOR NOW) and what to watch (e.g. another disk nearly full now).
+        view["checks"] = {key: incident.verification[key] for key in ("users_ok", "stays_fixed", "warnings")}
     return view
 
 
@@ -423,6 +450,12 @@ def decide(option: int, session: Session = Depends(current_session)) -> dict:
         incident.add_step("apply", "\n".join(f"{number}. {line}" for number, line in enumerate(incident.done, 1)))
     incident.verification = verify(session.server, session.fault)
     result = incident.verification
+    if result["verdict"] != "NOT FIXED":
+        # The proof that customers are OK: the log lines the server writes once it has recovered
+        # (the fault's "recovery", e.g. "INFO POST /api/orders 201": an order went through again).
+        # A real on-call engineer checks the same way: not "it looks fine", but "orders succeed again".
+        recovery_logs = session.fault.get("recovery", {}).get("logs", {})
+        incident.proof = [f"{container}: {text}" for container, lines in recovery_logs.items() for _, text in lines]
     lines = [result["verdict"], f"Decision: {incident.decision['note']}", "", "Users OK?"]
     lines += [f"  {line}" for line in result["users_ok"]] + ["Stays fixed?"]
     lines += [f"  {line}" for line in result["stays_fixed"]]

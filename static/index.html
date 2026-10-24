@@ -11,6 +11,8 @@
   <!-- Without this line, phones show a tiny zoomed-out desktop page. -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Lifeguard: AI on-call engineer</title>
+  <!-- The tab icon: a red-and-white life buoy, drawn as a tiny SVG right here (no image file needed). -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23dc2626' stroke-width='7'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='white' stroke-width='7' stroke-dasharray='8.64 8.64'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/style.css">
   <script>
     // Pick the theme before the page is drawn, so a dark-mode visitor doesn't see a white flash first.
@@ -28,7 +30,14 @@
        element only sticks while its parent is on screen, and the header scrolls away. -->
   <div class="top-bar">
     <div class="top-bar-inner">
-      <div class="brand"><span class="logo" aria-hidden="true"></span>Lifeguard</div>
+      <div class="brand">
+        <!-- A life buoy: a red ring with four white stripes (the same drawing as the tab icon). -->
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+          <circle cx="16" cy="16" r="11" fill="none" stroke="#dc2626" stroke-width="7"/>
+          <circle cx="16" cy="16" r="11" fill="none" stroke="#fff" stroke-width="7" stroke-dasharray="8.64 8.64"/>
+        </svg>
+        Lifeguard
+      </div>
       <!-- Light / dark switch. app.js handles the click; only the icon for the other theme shows. -->
       <button id="theme" class="icon-button" type="button" aria-label="Switch theme" title="Switch theme">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -46,14 +55,13 @@
 
   <header>
     <div class="hero">
-      <h1>Your <span class="glow">AI on-call engineer</span><br>for a small online shop</h1>
-      <p class="tagline">Break the server, watch the agent investigate step by step,
-        and approve the fix yourself. Nothing changes on the server without a human saying yes.</p>
-      <div class="chips">
-        <span class="chip nvidia">NVIDIA Nemotron 3: Nano, Super, Ultra</span>
-        <span class="chip nebius">Nebius Token Factory</span>
-        <span class="chip tavily">Tavily web search</span>
-      </div>
+      <h1>When the shop goes down at 3 a.m.,<br>Lifeguard finds out why.</h1>
+      <p class="tagline">It does what an on-call engineer would do: reads the logs, checks the disks,
+        looks at what changed, and searches the web for errors it doesn't know.
+        Then it tells you what went wrong and how to fix it. Nothing changes until you say yes.</p>
+      <p class="tagline">Try it on the demo shop below. Break something on purpose and watch.</p>
+      <p class="built-with">Runs on NVIDIA Nemotron 3 (Nano, Super and Ultra) through Nebius Token Factory,
+        with Tavily for web search.</p>
     </div>
   </header>
 
@@ -75,46 +83,52 @@
     <!-- 1. Break the server -->
     <section class="panel view s1" id="break-panel">
       <div class="panel-head">
-        <h2><span class="step">1</span> Break the server</h2>
+        <h2><span class="step">1</span> Break the shop</h2>
         <button id="reset" class="secondary" type="button">Reset server</button>
       </div>
-      <p class="muted">Pick a fault, describe your own, or let us surprise you.
-        The agent never sees what you picked, only what the customers complain about.</p>
+      <p class="muted">Pick a problem, or describe one in your own words.
+        The agent won't know what you picked. Like a real on-call engineer, it only gets the customers' complaint.</p>
 
-      <h3>Ready-made faults</h3>
+      <h3>Common problems</h3>
       <!-- app.js puts one button per preset in here (from GET /presets). -->
       <div id="presets" class="buttons"></div>
 
-      <h3>Your own fault</h3>
+      <h3>Describe your own</h3>
       <form id="custom-form" class="custom">
         <input id="custom-idea" maxlength="300" autocomplete="off"
-               placeholder="e.g. the cache runs out of memory and gets killed">
-        <button type="submit">Build it</button>
+               placeholder="for example: the cache runs out of memory">
+        <button type="submit">Break it</button>
       </form>
 
-      <h3>Or</h3>
-      <button id="random" type="button" class="secondary">Surprise me</button>
+      <h3>Can't decide?</h3>
+      <button id="random" type="button" class="secondary">Pick one for me</button>
 
       <!-- Short messages for the visitor: "Building your fault...", the guard's refusal, errors. -->
       <div id="break-message" class="message" hidden></div>
 
       <!-- Once the server is broken: the way to the next step. -->
       <div id="next-investigate" class="next" hidden>
-        <span>The server is broken and customers are complaining. Time to call the agent.</span>
-        <button type="button" id="go-investigate">Start the investigation →</button>
+        <span>The shop is broken and customers are complaining.</span>
+        <button type="button" id="go-investigate">Call the agent →</button>
       </div>
     </section>
 
     <!-- The server, live: on step 1 (watch it break) and step 4 (watch it recover). -->
     <section class="panel view s1 s4" id="server-panel">
       <div class="panel-head">
-        <h2>Your server</h2>
+        <h2>The demo shop <span class="host">shop-prod-01</span></h2>
         <span id="updated" class="muted"></span>
       </div>
 
       <!-- Shown only while something is broken: what the customers are complaining about. -->
       <div id="alert" class="alert" hidden></div>
 
+      <!-- The shop as a map: customers -> web -> api -> database and cache. Each box turns
+           amber or red when that part has a problem, and lights up while the agent checks it.
+           app.js draws it from GET /status. -->
+      <div id="map" class="map" aria-label="Map of the shop's server"></div>
+
+      <h3>Containers</h3>
       <!-- app.js puts one card per container in here. -->
       <div id="containers" class="cards"></div>
 
@@ -140,10 +154,11 @@
         <h2><span class="step">2</span> The agent investigates</h2>
         <span id="agent-clock" class="muted"></span>
       </div>
-      <p class="muted">Break the server first. Then start the investigation and watch the agent work:
-        Nemotron Nano takes a first look, Super investigates with tools and a web search,
-        and Ultra makes the final call.</p>
-      <button id="investigate" type="button" disabled>Start the investigation</button>
+      <p class="muted">Three models work together. Nano reads the complaint and guesses where to look.
+        Super checks logs, disks and recent changes, and searches the web when it finds an error.
+        Ultra reads everything and decides what went wrong.
+        Steps marked <strong>Guardrail</strong> are our own code checking the AI's work.</p>
+      <button id="investigate" type="button" disabled>Call the agent</button>
       <!-- app.js adds one entry per agent step in here. -->
       <ol id="timeline" class="timeline"></ol>
       <div id="agent-message" class="message" hidden></div>
@@ -169,15 +184,22 @@
     <section class="panel view s4" id="result-panel" hidden>
       <h2><span class="step">4</span> Result</h2>
       <div id="verdict" class="verdict"></div>
+      <!-- After a fix that worked: the new log lines that prove it (e.g. an order going through). -->
+      <div id="proof" class="proof" hidden></div>
       <div id="verdict-details" class="verdict-details"></div>
       <p class="links">
         <a href="/postmortem" target="_blank" rel="noopener">Read the postmortem</a>
         <a href="/postmortem" download>Download it (.md)</a>
       </p>
       <!-- Same as "Reset server" in step 1: a fresh healthy server, back to step 1. -->
-      <button type="button" id="again">Try another fault</button>
+      <button type="button" id="again">Try another one</button>
     </section>
   </main>
+
+  <footer class="footer">
+    Made by Pavan Kushana for the Nebius × NVIDIA Global AI Hackathon
+    · <a href="https://github.com/PavanKushana/lifeguard-agent" target="_blank" rel="noopener">Code on GitHub</a>
+  </footer>
 
   <script src="/static/app.js"></script>
 </body>

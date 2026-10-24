@@ -157,9 +157,12 @@ RANDOM_IDEAS = [
 ]
 
 
-def random_idea() -> str:
-    """Pick one idea for "Surprise me". It comes from our own list, so the guard isn't needed."""
-    return random.choice(RANDOM_IDEAS)
+def random_idea(other_than: str | None = None) -> str:
+    """Pick one idea for "Surprise me". It comes from our own list, so the guard isn't needed.
+
+    other_than: an idea that just failed, so the next try gets a different one.
+    """
+    return random.choice([idea for idea in RANDOM_IDEAS if idea != other_than])
 
 
 def make_fault(idea: str, usage: Usage) -> tuple[dict | None, list[dict]]:

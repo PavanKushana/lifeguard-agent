@@ -48,6 +48,8 @@ class Incident:
     decision: dict | None = None
     done: list[str] = field(default_factory=list)
     verification: dict | None = None
+    # After a fix that worked: the new log lines that show it, e.g. "api: INFO POST /api/orders 201 in 58ms".
+    proof: list[str] = field(default_factory=list)
 
     def add_step(self, kind: str, text: str) -> None:
         """Record one step of the agent. Passed to the agent as its on_step, like print_step in the terminal."""
@@ -73,6 +75,8 @@ class FaultBuild:
     state: str = "building"
     message: str = "Building your fault, this can take a minute..."
     cost: str | None = None
+    # A short update while it's still building, e.g. that a different random problem is being tried.
+    note: str | None = None
 
 
 @dataclass

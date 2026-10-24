@@ -41,6 +41,7 @@ const state = {
   busy: false,      // a request from a button is on its way (stops double clicks)
   incident: null,   // the agent's run on this fault: null before "Start the investigation"
   view: 1,          // which step is on screen: 1 Break, 2 Investigate, 3 Decide, 4 Result
+  focus: null,      // the part the agent is checking right now (e.g. "api"), lit up on the map
 };
 
 
@@ -83,9 +84,14 @@ function timeSince(isoTime) {
   return `${Math.round(hours / 24)} days`;
 }
 
-/** Green, amber or red for a percentage: amber from 80%, red from 90%. */
+/**
+ * Green, amber or red for a disk or memory percentage, the same everywhere on the page.
+ * Red only when it's full (98% and up), because red means "broken". From 80% it's amber:
+ * worth watching, nothing is failing yet. (24 Oct: a disk fix moved a backup onto the main disk,
+ * which went to 90%; with red from 90% the page looked broken although the verdict was FIXED.)
+ */
 function levelFor(percent) {
-  if (percent >= 90) return "bad";
+  if (percent >= 98) return "bad";
   if (percent >= 80) return "warn";
   return "ok";
 }
@@ -141,6 +147,109 @@ function jobRow(j) {
   return `<div class="row row-line"><span>${escapeHtml(j.name)} <span class="muted">(${escapeHtml(j.schedule)})</span></span>${onOff}</div>`;
 }
 
+// ---------- The map: customers -> web -> api -> database and cache ----------
+
+// How bad each colour is, to keep the worst one when a part has several problems.
+const RANK = { ok: 0, warn: 1, bad: 2 };
+
+/**
+ * How each part of the shop is doing, from one GET /status answer: a colour and a short note
+ * ("running", "HTTP 502", "disk 100%"). Not only the container's own status: all four can say
+ * "Running" while the database disk is full, and the map should show where it hurts.
+ */
+function partStates(status, resolved) {
+  const parts = {};
+  // The box shows its first note, so the note of the worst problem goes first: a red box must say
+  // why it's red. (24 Oct: a cache box was red from full memory but said "restarting", the amber reason.)
+  const add = (name, level, note) => {
+    const part = parts[name];
+    if (!part || level === "ok") return;
+    if (RANK[level] > RANK[part.level]) {
+      part.level = level;
+      part.notes.unshift(note);
+    } else {
+      part.notes.push(note);
+    }
+  };
+
+  for (const c of status.containers) {
+    const { level, label } = containerState(c);
+    parts[c.name] = { level: "ok", notes: [] };
+    add(c.name, level, label.toLowerCase());
+    const memory = Math.round((c.memory_mb / c.memory_limit_mb) * 100);
+    add(c.name, levelFor(memory), `memory ${memory}%`);
+  }
+  for (const e of status.endpoints) {
+    if (e.status !== 200) add(e.url.includes("/api/") ? "api" : "web", "bad", `HTTP ${e.status}`);
+  }
+  for (const d of status.disks) {
+    // The database disk belongs to the database; the main disk is where nginx and the api write.
+    const dbDisk = d.mount === "/var/lib/postgresql";
+    const note = `${dbDisk ? "disk" : "main disk"} ${d.used_percent}%`;
+    for (const owner of dbDisk ? ["db"] : ["web", "api"]) add(owner, levelFor(d.used_percent), note);
+  }
+
+  // The customers: unhappy while there's an alert that no fix has answered yet.
+  parts.customers = status.alert && !resolved
+    ? { level: "bad", notes: ["complaining"] }
+    : { level: "ok", notes: [status.alert ? "happy again" : "happy"] };
+  return parts;
+}
+
+/** One box on the map. The data-part name lets the page light it up while the agent checks it. */
+function mapNode(name, role, part) {
+  const note = part.notes[0] || "OK";
+  return `<div class="map-node ${part.level}" data-part="${name}">
+            <span class="map-name">${escapeHtml(name)}</span>
+            ${role ? `<span class="map-role">${escapeHtml(role)}</span>` : ""}
+            <span class="map-note">${escapeHtml(note)}</span>
+          </div>`;
+}
+
+/**
+ * Draw the map in the order a customer's request travels: customers -> web -> api, and the
+ * api uses both the database and the cache. A line takes the colour of the part it leads to,
+ * so a red line shows where requests stop getting through.
+ */
+function renderMap(status, resolved) {
+  const p = partStates(status, resolved);
+  document.getElementById("map").innerHTML = `
+    ${mapNode("customers", "", p.customers)}
+    <div class="map-line ${p.customers.level}"></div>
+    ${mapNode("web", "nginx", p.web)}
+    <div class="map-line ${p.web.level}"></div>
+    ${mapNode("api", "shop app", p.api)}
+    <div class="map-fork">
+      <span class="fork-in ${p.api.level}"></span>
+      <span class="fork-db ${p.db.level}"></span>
+      <span class="fork-cache ${p.cache.level}"></span>
+    </div>
+    <div class="map-pair">
+      ${mapNode("db", "PostgreSQL", p.db)}
+      ${mapNode("cache", "Redis", p.cache)}
+    </div>`;
+}
+
+/**
+ * Which part a tool call looks at: get_logs(container=api) -> "api", a check of the api's
+ * health address -> "api", anything under the database folder -> "db". null for calls that
+ * look at the whole server (check_disk, get_metrics...).
+ */
+function toolTarget(call) {
+  const container = call.match(/container=(\w+)/);
+  if (container) return container[1];
+  if (call.startsWith("check_endpoint(")) return call.includes("/api") ? "api" : "web";
+  if (call.includes("postgresql")) return "db";
+  return null;
+}
+
+/** Light up the part the agent is checking, on the map and in the status strip. */
+function renderFocus() {
+  for (const element of document.querySelectorAll("[data-part]")) {
+    element.classList.toggle("focus", element.dataset.part === state.focus);
+  }
+}
+
 /**
  * The small status strip on steps 2 and 3: one light per container and the alert in one line,
  * so the server is never out of sight while the visitor watches the agent or picks a fix.
@@ -148,10 +257,14 @@ function jobRow(j) {
 function renderStrip(status, resolved) {
   const lights = status.containers.map((c) => {
     const { level, label } = containerState(c);
-    return `<span class="light ${level}" title="${escapeHtml(c.name)}: ${label}"></span>${escapeHtml(c.name)}`;
+    return `<span class="light ${level}" data-part="${escapeHtml(c.name)}" title="${escapeHtml(c.name)}: ${label}"></span>${escapeHtml(c.name)}`;
   }).join(" ");
   let text = "No complaints from customers.";
-  if (status.alert) text = `<strong>${resolved ? "Resolved:" : "Alert:"}</strong> ${escapeHtml(status.alert)}`;
+  if (status.alert) {
+    text = resolved ? `<strong>${state.incident.verdict === "FIXED" ? "Fixed." : "Fixed for now."}</strong> ` +
+                      escapeHtml(outcome(state.incident).back)
+                    : `<strong>Alert:</strong> ${escapeHtml(status.alert)}`;
+  }
   const strip = document.getElementById("strip");
   const open = document.getElementById("main").classList.contains("show-server");
   strip.className = `strip view s2 s3 ${status.alert ? (resolved ? "ok" : "bad") : ""}`;
@@ -168,10 +281,13 @@ function renderStatus(status) {
   const verdict = state.incident && state.incident.verdict;
   const resolved = verdict === "FIXED" || verdict === "FIXED FOR NOW";
   renderStrip(status, resolved);
+  renderMap(status, resolved);
   if (status.alert) {
     alertBox.className = resolved ? "alert resolved" : "alert";
-    alertBox.innerHTML = `<strong>${resolved ? `Resolved (${escapeHtml(verdict)}):` : "Alert:"}</strong> ` +
-                         escapeHtml(status.alert);
+    // After a fix, the old complaint is gone from the banner: "placing an order fails" under a
+    // green label still read like a current error (Pavan, 24 Oct). Instead it says what works
+    // again for THIS fault, from the server's recovery logs, and what's left to watch.
+    alertBox.innerHTML = resolved ? resolvedText(state.incident) : `<strong>Alert:</strong> ${escapeHtml(status.alert)}`;
     alertBox.hidden = false;
   } else {
     alertBox.hidden = true;
@@ -184,6 +300,7 @@ function renderStatus(status) {
   document.getElementById("endpoints").innerHTML = status.endpoints.map(endpointRow).join("");
   document.getElementById("disks").innerHTML = status.disks.map(diskRow).join("");
   document.getElementById("jobs").innerHTML = status.jobs.map(jobRow).join("");
+  renderFocus();  // the map and strip were just redrawn: light the checked part up again
 }
 
 /** Ask for the latest server state and redraw. Shows a short note if the API can't be reached. */
@@ -224,7 +341,7 @@ function updateBreakPanel() {
   document.getElementById("next-investigate").hidden = !state.broken;
   // Before the investigation the button starts it; afterwards it just goes back to it.
   document.getElementById("go-investigate").textContent =
-    state.incident ? "See the investigation →" : "Start the investigation →";
+    state.incident ? "Back to the agent →" : "Call the agent →";
   document.getElementById("go-investigate").disabled = state.busy;
 }
 
@@ -250,7 +367,7 @@ async function runAction(action, showError = showBreakMessage) {
 function breakPreset(preset) {
   runAction(async () => {
     await api("POST", `/break/preset/${preset.id}`);
-    showBreakMessage(`Broken: <strong>${escapeHtml(preset.title)}</strong>. The customers have noticed (see the alert below).`, "ok");
+    showBreakMessage(`Done: <strong>${escapeHtml(preset.title)}</strong>. Customers have started complaining (see the alert below).`, "ok");
   });
 }
 
@@ -270,6 +387,7 @@ function watchBuild() {
   stopWatching();
   state.building = true;
   updateBreakPanel();
+  let shownNote = null;  // only redraw when the note changes, or the spinner would restart every 2 s
   buildTimer = setInterval(async () => {
     let build;
     try {
@@ -281,10 +399,17 @@ function watchBuild() {
       updateBreakPanel();
       return;
     }
-    if (build.state === "building") return;
+    if (build.state === "building") {
+      // e.g. "a different problem is being set up": the visitor sees why it takes longer.
+      if (build.note && build.note !== shownNote) {
+        shownNote = build.note;
+        showBreakMessage(`<span class="spinner"></span>${escapeHtml(build.note)} This can take up to 2 more minutes...`);
+      }
+      return;
+    }
     stopWatching();
     if (build.state === "ready") {
-      showBreakMessage("Your fault is ready and the server is broken. Read the alert below.", "ok");
+      showBreakMessage("Done. The shop is broken. Read what the customers say below.", "ok");
     } else {
       showBreakMessage(escapeHtml(build.message), "bad");
     }
@@ -294,8 +419,8 @@ function watchBuild() {
 
 /** Show "building" with a spinner, then follow the build. The random idea is never shown. */
 function startWatching(build) {
-  const what = build.idea ? `"${escapeHtml(build.idea)}"` : "a surprise fault";
-  showBreakMessage(`<span class="spinner"></span>Building ${what}. This takes 10 seconds to 2 minutes...`);
+  const what = build.idea ? `Setting up "${escapeHtml(build.idea)}"` : "Picking a problem and setting it up";
+  showBreakMessage(`<span class="spinner"></span>${what}. This can take up to 2 minutes...`);
   watchBuild();
 }
 
@@ -319,7 +444,7 @@ document.getElementById("custom-form").addEventListener("submit", (event) => {
   event.preventDefault();  // a form would otherwise reload the whole page
   const idea = document.getElementById("custom-idea").value.trim();
   if (!idea) {
-    showBreakMessage("Type a fault first, for example: the cache crashed.", "bad");
+    showBreakMessage("Type a problem first, for example: the cache crashed.", "bad");
     return;
   }
   runAction(async () => {
@@ -341,7 +466,7 @@ function resetServer() {
     clearAgent();
     await api("POST", "/reset");
     document.getElementById("custom-idea").value = "";
-    showBreakMessage("Fresh healthy server. Break it again!", "ok");
+    showBreakMessage("The shop is healthy again. Pick another problem.", "ok");
   });
 }
 
@@ -379,6 +504,8 @@ function stopFollowing() {
 function clearAgent() {
   stopFollowing();
   state.incident = null;
+  state.focus = null;
+  renderFocus();
   document.getElementById("timeline").innerHTML = "";
   document.getElementById("agent-clock").textContent = "";
   showAgentMessage("");
@@ -389,9 +516,19 @@ function clearAgent() {
   updateStepper();
 }
 
+// What each badge in the timeline means, shown when the mouse is over it.
+// "Guardrail" is the usual name for code that checks an AI's work: no model in that step.
+const BADGE_INFO = {
+  Nano: "NVIDIA Nemotron 3 Nano: a small, fast model for the first look",
+  Super: "NVIDIA Nemotron 3 Super: investigates with tools and web search",
+  Ultra: "NVIDIA Nemotron 3 Ultra: the biggest model, makes the final call",
+  Guardrail: "Our own code checking the AI's work. No AI model in this step.",
+};
+
 /** One step's heading: time, which model (or our code) did it, and a title. */
 function stepHead(step, model, title) {
-  const badge = model ? `<span class="model ${model.toLowerCase().replace(" ", "-")}">${model}</span>` : "";
+  const info = BADGE_INFO[model] ? ` title="${BADGE_INFO[model]}"` : "";
+  const badge = model ? `<span class="model ${model.toLowerCase().replace(" ", "-")}"${info}>${model}</span>` : "";
   return `<div class="step-head"><span class="step-time">${escapeHtml(step.at)}</span>${badge}
           <span class="step-title">${title}</span></div>`;
 }
@@ -426,6 +563,39 @@ function triageText(text) {
   }
 }
 
+/**
+ * Our code's rule steps in plain words. The agent writes short technical notes (kept as they are
+ * for the terminal and the postmortem); a visitor needs to know what happened and why.
+ * A rule this list doesn't know is shown as it is.
+ */
+function ruleView(text) {
+  if (text.startsWith("No web search yet")) {
+    return { title: "Sent back: search the web first",
+             text: "Super wanted to write its report without looking anything up. Our rule: check the error " +
+                   "on the web first, so it was sent back once." };
+  }
+  if (text.startsWith("Empty answer")) {
+    return { title: "Asked again: the report was empty",
+             text: "Super's answer was empty, so it was asked once more to write its report from what it found." };
+  }
+  if (text.startsWith("Source links")) {
+    return { title: "Source links checked",
+             text: "Every link the AI cites must come from a real search result, so a made-up link can't get through.\n" +
+                   text.split("\n").slice(1).join("\n") };
+  }
+  if (text.startsWith("Final call not usable")) {
+    const match = text.match(/\((.*)\)/);
+    return { title: "Asked again: Ultra's answer couldn't be used",
+             text: `Ultra's answer was missing something we need (${match ? match[1] : "it was incomplete"}), ` +
+                   "so it was asked once more." };
+  }
+  if (text.startsWith("Every option was blocked")) {
+    return { title: "Asked again: every fix was blocked",
+             text: "The safety check stopped all of Ultra's fixes, so Ultra was told why and asked once for safe ones." };
+  }
+  return { title: "Rule check", text };
+}
+
 /** Add one agent step to the timeline, drawn by its kind. */
 function addStep(step) {
   const timeline = document.getElementById("timeline");
@@ -450,6 +620,8 @@ function addStep(step) {
     case "tool_call": {
       item.className = "tool";
       const call = readableCall(step.text);
+      state.focus = toolTarget(call);
+      renderFocus();
       const title = call.startsWith("search_web(")
         ? `Web search (Tavily): <span class="code">${escapeHtml(call.slice(17, -1))}</span>`
         : `Runs <span class="code">${escapeHtml(call)}</span>`;
@@ -467,12 +639,14 @@ function addStep(step) {
       break;
     case "safety":
       item.className = step.text.startsWith("BLOCKED") ? "warn" : "ok";
-      html = stepHead(step, "Code check", "Safety check") + `<div class="step-text">${escapeHtml(step.text)}</div>`;
+      html = stepHead(step, "Guardrail", "Safety check") + `<div class="step-text">${escapeHtml(step.text)}</div>`;
       break;
-    case "rule":
+    case "rule": {
       item.className = "warn";
-      html = stepHead(step, "Code check", "Rule") + `<div class="step-text">${escapeHtml(step.text)}</div>`;
+      const rule = ruleView(step.text);
+      html = stepHead(step, "Guardrail", escapeHtml(rule.title)) + `<div class="step-text">${escapeHtml(rule.text)}</div>`;
       break;
+    }
     case "apply":
       item.className = "ok";
       html = stepHead(step, "", "Applying the fix") + `<div class="step-text">${escapeHtml(step.text)}</div>`;
@@ -493,6 +667,8 @@ function addStep(step) {
 function finishIncident(view) {
   stopFollowing();
   state.incident = view;
+  state.focus = null;  // the agent has stopped looking around
+  renderFocus();
   document.getElementById("agent-clock").textContent = view.cost || "";
   if (view.state === "failed") {
     showAgentMessage(`The agent stopped. ${escapeHtml(view.error)} To run it again: Reset server, then break it again.`, "bad");
@@ -501,8 +677,8 @@ function finishIncident(view) {
   const next = document.getElementById("next-decide");
   next.hidden = view.state !== "done";
   document.getElementById("next-decide-text").textContent = view.decision
-    ? "You already decided." : "Done. Ultra has fix options for you.";
-  document.getElementById("go-decide").textContent = view.decision ? "See the result →" : "Choose a fix →";
+    ? "You've already picked a fix." : "The agent is done. It found the cause and has fixes for you.";
+  document.getElementById("go-decide").textContent = view.decision ? "See the result →" : "See the fixes →";
   updateAgentPanel();
   updateBreakPanel();
   if (view.state === "done") renderDecision(view);
@@ -645,7 +821,7 @@ function renderDecision(view) {
   reject.classList.remove("armed");
   reject.hidden = chosen !== null && chosen !== 0;
   reject.disabled = chosen !== null;
-  reject.textContent = chosen === 0 ? "Rejected: nothing was changed" : "Reject all, change nothing";
+  reject.textContent = chosen === 0 ? "Rejected: nothing was changed" : "None of these, leave it as it is";
 
   for (const button of document.querySelectorAll("#options .approve")) {
     button.addEventListener("click", () => confirmThen(button, Number(button.dataset.number)));
@@ -691,25 +867,122 @@ function decide(number) {
   }, showAgentMessage);
 }
 
+// A request and its answer code in a log line, in our api's style ("POST /api/orders 201")
+// and in nginx's ('"GET /products HTTP/1.1" 200'). The same pattern as REQUEST in validator.py.
+const REQUEST = /\b(GET|POST|PUT|PATCH|DELETE)\s+(\/[^\s"]*)(?:\s+HTTP\/[\d.]+")?\s+(\d{3})/;
+
+// What the shop's addresses are for, in a customer's words. The "Fixed" message is built from the
+// server's own recovery logs, so it names what really works again in THIS incident. An address
+// that isn't listed (a custom fault can invent one) is shown as it is, e.g. "GET /api/search".
+const PAGE_NAMES = {
+  "/api/orders": "placing orders",
+  "/api/checkout": "checkout",
+  "/api/cart": "the shopping cart",
+  "/api/products": "product pages",
+  "/products": "product pages",
+  "/": "the home page",
+};
+
+/** "api: INFO POST /api/orders 201 in 58ms" -> {container: "api", method, path, code, success}, or null. */
+function parseRequest(line) {
+  const match = line.match(REQUEST);
+  if (!match) return null;
+  const [, method, path, code] = match;
+  // 2xx = the request worked (200 OK, 201 Created...).
+  return { container: line.split(":")[0], method, path, code, success: code.startsWith("2") };
+}
+
+/** ["a"] -> "a", ["a", "b"] -> "a and b", ["a", "b", "c"] -> "a, b and c". */
+function joinWords(words) {
+  return words.length < 2 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
+}
+
+/**
+ * What the fix changed for the customers, in words, built from this incident's own data
+ * (nothing here is the same sentence for every fault):
+ *   back:  what works again, from the recovery logs (or the server checks that passed, if the logs have no request)
+ *   kept:  for FIXED, why it stays fixed (the checks that passed, e.g. "job db-backup is off")
+ *   still: for FIXED FOR NOW, what's still wrong (the checks that failed), so it will come back
+ *   watch: side effects to keep an eye on, e.g. another disk nearly full after moving files there
+ */
+function outcome(view) {
+  const checks = view.checks || { users_ok: [], stays_fixed: [], warnings: [] };
+  // The check lines read "OK  text" or "NO  text"; a line in brackets says how they combine.
+  const lines = (list, start) => list.filter((line) => line.startsWith(start)).map((line) => line.slice(3).trim());
+  const pages = [];
+  for (const line of view.proof || []) {
+    const request = parseRequest(line);
+    if (!request || !request.success) continue;
+    const name = PAGE_NAMES[request.path] || `${request.method} ${request.path}`;
+    if (!pages.includes(name)) pages.push(name);
+  }
+  const passed = lines(checks.users_ok, "OK");
+  let back = "";
+  if (pages.length) back = `Working again: ${joinWords(pages)}.`;
+  else if (passed.length) back = `Checked on the server: ${joinWords(passed)}.`;
+  // "/ is 90% full now" -> "the main disk (/) is 90% full now": the same words as the Disks list.
+  const warnings = checks.warnings.map((text) => {
+    const mount = text.split(" ")[0];
+    return DISK_NAMES[mount] ? `the ${DISK_NAMES[mount]} (${mount})${text.slice(mount.length)}` : text;
+  });
+  return {
+    back,
+    kept: view.verdict === "FIXED" ? `Stays fixed: ${joinWords(lines(checks.stays_fixed, "OK"))}.` : "",
+    still: view.verdict === "FIXED FOR NOW" ? `The cause is still there: ${joinWords(lines(checks.stays_fixed, "NO"))}.` : "",
+    watch: warnings.length ? `Watch out: ${joinWords(warnings)}.` : "",
+  };
+}
+
+/** The green banner after a fix that worked: what works again, and anything left to watch. */
+function resolvedText(view) {
+  const result = outcome(view);
+  const extra = [result.still, result.watch].filter(Boolean)
+    .map((text) => `<span class="detail warn">${escapeHtml(text)}</span>`).join("");
+  return `<strong>${view.verdict === "FIXED" ? "Fixed." : "Fixed for now."}</strong> ${escapeHtml(result.back)}${extra}`;
+}
+
 /** The big verdict and the checks behind it, from the last "verdict" step. */
 function renderResult(view) {
   const verdictStep = [...view.steps].reverse().find((step) => step.kind === "verdict");
   const level = view.verdict === "FIXED" ? "ok" : view.verdict === "NOT FIXED" ? "bad" : "warn";
-  const meaning = {
-    FIXED: "Users are OK again, and the cause is gone.",
-    "FIXED FOR NOW": "Users are OK again, but the cause is still there. It will come back.",
-    "NOT FIXED": "Users are still affected.",
-  }[view.verdict] || "";
+  const result = outcome(view);
+  // Not fixed: the customers' own complaint, which is still true. Otherwise what changed for them.
+  const meaning = view.verdict === "NOT FIXED"
+    ? `Customers still report: "${view.alert}"`
+    : [result.back, result.kept, result.still].filter(Boolean).join(" ");
   const box = document.getElementById("verdict");
   box.className = `verdict ${level}`;
-  box.innerHTML = `${escapeHtml(view.verdict)}<small>${meaning}</small>` +
+  box.innerHTML = `${escapeHtml(view.verdict)}<small>${escapeHtml(meaning)}</small>` +
                   `<small>Decision: ${escapeHtml(view.decision || "")}</small>`;
-  // The checks behind the verdict, without the "Decision:" line already shown above.
+  // The checks behind the verdict, folded (the sentences above say the same in words),
+  // without the "Decision:" line already shown above.
   const details = verdictStep
     ? verdictStep.text.split("\n").slice(1).filter((line) => !line.startsWith("Decision:")).join("\n").trim()
     : "";
-  document.getElementById("verdict-details").innerHTML = details ? `<pre>${escapeHtml(details)}</pre>` : "";
+  document.getElementById("verdict-details").innerHTML = details ? folded("How the server checked it", details) : "";
+  renderProof(view.proof || []);
   document.getElementById("result-panel").hidden = false;
+}
+
+/**
+ * "api: INFO POST /api/orders 201 in 58ms" -> "api: POST /api/orders answered 201 (success)".
+ * Only a request line is reworded; other log lines are shown as they are.
+ */
+function proofLine(line) {
+  const request = parseRequest(line);
+  if (!request) return { success: false, text: line };
+  const { container, method, path, code, success } = request;
+  return { success, text: `${container}: ${method} ${path} answered ${code}${success ? " (success)" : ""}` };
+}
+
+/** The log lines that show the fix worked, e.g. a new order going through. Hidden when there are none. */
+function renderProof(lines) {
+  const box = document.getElementById("proof");
+  box.hidden = lines.length === 0;
+  const items = lines.map(proofLine)
+    .sort((a, b) => b.success - a.success)  // the requests that worked first: they're what customers feel
+    .map((line) => `<li class="${line.success ? "success" : ""}">${escapeHtml(line.text)}</li>`);
+  box.innerHTML = `<div class="label">Proof from the server: what the logs show now</div><ul>${items.join("")}</ul>`;
 }
 
 document.getElementById("reject").addEventListener("click", (event) => confirmThen(event.currentTarget, 0));

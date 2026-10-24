@@ -1,9 +1,10 @@
 /*
   style.css
   The look of the page: a "control room" style, like the monitoring tools on-call engineers
-  use, with glowing status lights. Colours are defined once at the top as variables, so the
-  whole page changes together. There is a light and a dark version: the sun/moon button in
-  the header switches between them (app.js sets data-theme="light" or "dark" on <html>).
+  use. Calm colours; only a problem glows, so the eye goes to what's broken. Colours are
+  defined once at the top as variables, so the whole page changes together. There is a light
+  and a dark version: the sun/moon button in the header switches between them
+  (app.js sets data-theme="light" or "dark" on <html>).
 */
 
 /* ---------- Colours: light theme ---------- */
@@ -11,7 +12,6 @@
 :root {
   color-scheme: light;  /* scrollbars and form fields follow the theme too */
   --bg: #f3f6fb;
-  --bg-glow: rgba(37, 99, 235, 0.10);   /* the soft light at the top of the page */
   --grid: rgba(15, 23, 42, 0.035);      /* the faint grid lines behind everything */
   --bar-bg: rgba(243, 246, 251, 0.82);  /* the header bar, see-through */
   --panel: #ffffff;
@@ -26,7 +26,6 @@
   --bad: #dc2626;
   --bad-soft: #fee2e2;
   --accent: #2563eb;
-  --accent-2: #7c3aed;
   --on-accent: #ffffff;                 /* text on an accent-coloured button */
   --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
   --radius: 14px;
@@ -38,7 +37,6 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #070b11;
-  --bg-glow: rgba(56, 189, 248, 0.12);
   --grid: rgba(148, 163, 184, 0.05);
   --bar-bg: rgba(7, 11, 17, 0.78);
   --panel: #0d131b;
@@ -53,7 +51,6 @@
   --bad: #f87171;
   --bad-soft: rgba(248, 113, 113, 0.13);
   --accent: #60a5fa;
-  --accent-2: #a78bfa;
   --on-accent: #06121f;  /* the accent is light here, so dark text reads better on it */
   --shadow: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 12px 32px rgba(0, 0, 0, 0.4);
 }
@@ -68,13 +65,12 @@ body {
   color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   line-height: 1.5;
-  /* A soft glow at the top over a faint grid, like a monitoring screen. */
+  /* A faint grid, like graph paper on a monitoring screen. */
   background-color: var(--bg);
   background-image:
-    radial-gradient(1100px 480px at 50% -120px, var(--bg-glow), transparent 70%),
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: auto, 32px 32px, 32px 32px;
+  background-size: 32px 32px;
   min-height: 100vh;
 }
 
@@ -122,7 +118,7 @@ main[data-step="4"] .strip { order: -2; }
   background: transparent; color: var(--muted); border: 1px solid transparent;
   font-weight: 650;
 }
-.stepper button:hover:not(:disabled) { background: var(--inset); color: var(--text); box-shadow: none; transform: none; }
+.stepper button:hover:not(:disabled) { background: var(--inset); color: var(--text); filter: none; }
 .stepper .num {
   display: inline-grid; place-items: center; flex: none;
   width: 24px; height: 24px; border-radius: 8px;
@@ -131,9 +127,7 @@ main[data-step="4"] .strip { order: -2; }
 }
 /* The step on screen. */
 .stepper button.active { background: var(--panel); color: var(--text); border-color: var(--line); }
-.stepper button.active .num {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border-color: transparent;
-}
+.stepper button.active .num { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 /* A finished step: a green tick. */
 .stepper button.done .num { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
 /* The next step is ready (e.g. the agent finished): it pulses to say "over here". */
@@ -155,16 +149,18 @@ main[data-step="4"] .strip { order: -2; }
 .strip.bad { border-left-color: var(--bad); }
 .strip.bad strong { color: var(--bad); }
 .strip.ok strong { color: var(--ok); }
-.strip:hover:not(:disabled) { transform: none; border-color: var(--accent); box-shadow: var(--shadow); }
+.strip:hover:not(:disabled) { border-color: var(--accent); filter: none; }
 .strip-inner { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
 .lights { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
 .strip-text { flex: 1 1 260px; font-size: 0.9rem; }
 .strip-toggle { color: var(--accent); font-size: 0.85rem; font-weight: 650; white-space: nowrap; }
-/* One glowing light per container. */
+/* One light per container; a broken one glows. */
 .light {
   display: inline-block; width: 8px; height: 8px; margin-left: 4px; border-radius: 50%;
-  background: var(--ok); box-shadow: 0 0 8px var(--ok);
+  background: var(--ok);
 }
+/* The container the agent is checking right now gets a pulsing ring. */
+.light.focus { animation: focus-ring 1.2s ease-in-out infinite; }
 .light:first-child { margin-left: 0; }
 .light.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
 .light.bad { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
@@ -202,12 +198,8 @@ main[data-step="4"] .strip { order: -2; }
   display: flex; justify-content: space-between; align-items: center; gap: 12px;
 }
 .brand { display: flex; align-items: center; gap: 10px; font-size: 1.15rem; font-weight: 750; letter-spacing: -0.01em; }
-/* A small red-and-white ring, like a life buoy. */
-.logo {
-  width: 22px; height: 22px; border-radius: 50%;
-  border: 6px solid var(--bad);
-  box-shadow: inset 0 0 0 2px var(--panel), 0 0 12px rgba(248, 113, 113, 0.45);
-}
+/* The life buoy (an SVG drawing in index.html). */
+.logo { width: 26px; height: 26px; flex: none; }
 
 /* The sun/moon button: only one of the two icons shows, depending on the theme. */
 .icon-button {
@@ -224,27 +216,27 @@ main[data-step="4"] .strip { order: -2; }
 
 .hero { max-width: 1100px; margin: 0 auto; padding: 40px 16px 12px; }
 .hero h1 {
-  margin: 0; font-size: clamp(1.8rem, 5vw, 2.6rem); line-height: 1.15; letter-spacing: -0.02em;
+  margin: 0; font-size: clamp(1.6rem, 4.6vw, 2.4rem); line-height: 1.2; letter-spacing: -0.02em;
 }
-/* The two key words in a blue-to-purple gradient. */
-.hero h1 .glow {
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text; background-clip: text; color: transparent;
+.tagline { margin: 12px 0 0; color: var(--muted); max-width: 680px; font-size: 1.05rem; }
+/* What it runs on: one quiet line, written as a sentence. */
+.built-with {
+  margin: 18px 0 0; padding-left: 10px; max-width: 680px;
+  border-left: 3px solid var(--line);
+  color: var(--muted); font-size: 0.85rem;
 }
-.tagline { margin: 12px 0 0; color: var(--muted); max-width: 660px; font-size: 1.05rem; }
 
-/* What it's built with, as small labels under the tagline. */
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
-.chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 0.78rem; font-weight: 600;
-  padding: 4px 10px; border-radius: 999px;
-  background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+/* The server's name next to "The demo shop", like a hostname in a terminal. */
+.host {
+  margin-left: 10px; padding: 1px 8px; border-radius: 6px;
+  background: var(--inset); border: 1px solid var(--line);
+  font-family: var(--mono); font-size: 0.78rem; font-weight: 500; color: var(--muted);
 }
-.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--chip, var(--accent)); }
-.chip.nvidia { --chip: #76b900; }
-.chip.nebius { --chip: var(--accent); }
-.chip.tavily { --chip: var(--accent-2); }
+
+.footer {
+  max-width: 1100px; margin: 0 auto; padding: 8px 16px 40px;
+  color: var(--muted); font-size: 0.85rem; text-align: center;
+}
 
 /* ---------- Alert banner ---------- */
 
@@ -264,6 +256,9 @@ main[data-step="4"] .strip { order: -2; }
   border-left-color: var(--ok);
 }
 .alert.resolved strong { color: var(--ok); }
+/* Extra lines under a fixed banner: what's still wrong, what to watch. */
+.alert .detail { display: block; margin-top: 4px; font-size: 0.875rem; }
+.alert .detail.warn { color: var(--warn); }
 
 /* ---------- Panels ---------- */
 
@@ -280,6 +275,80 @@ h2 { margin: 0 0 8px; font-size: 1.2rem; letter-spacing: -0.01em; display: flex;
 .panel-head h2 { margin-bottom: 0; }
 h3 { margin: 20px 0 8px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .muted { color: var(--muted); font-size: 0.875rem; }
+
+/* ---------- The map: customers -> web -> api -> database and cache ---------- */
+
+/* One row on a laptop, read left to right like a request travelling through the shop. */
+.map {
+  display: flex; align-items: center; justify-content: center;
+  margin: 4px 0 8px; padding: 22px 18px;
+  background: var(--inset); border: 1px solid var(--line); border-radius: 12px;
+  overflow-x: auto;
+}
+.map-node {
+  position: relative; flex: none;
+  display: flex; flex-direction: column; gap: 1px;
+  min-width: 112px; padding: 10px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--ok);
+  border-radius: 10px;
+}
+.map-node.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+.map-node.bad { border-left-color: var(--bad); background: var(--bad-soft); box-shadow: 0 0 14px color-mix(in srgb, var(--bad) 30%, transparent); }
+.map-name { font-family: var(--mono); font-weight: 700; }
+.map-role { font-size: 0.75rem; color: var(--muted); }
+.map-note { font-size: 0.8rem; font-weight: 650; color: var(--ok); }
+.map-node.warn .map-note { color: var(--warn); }
+.map-node.bad .map-note { color: var(--bad); }
+
+/* The part the agent is checking right now: a pulsing blue ring and a small label. */
+.map-node.focus { outline: 2px solid var(--accent); outline-offset: 3px; animation: focus-ring 1.2s ease-in-out infinite; }
+.map-node.focus::after {
+  content: "agent checking"; position: absolute; top: -11px; right: 8px;
+  padding: 0 6px; border-radius: 6px;
+  background: var(--accent); color: var(--on-accent);
+  font-size: 0.65rem; font-weight: 700; line-height: 18px;
+}
+@keyframes focus-ring {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 30%, transparent); }
+}
+
+/* The lines between the boxes. A healthy line has dots moving along it: requests flowing.
+   A broken one is a red dashed line that stands still: nothing gets through. */
+.map-line { flex: 1 1 24px; min-width: 20px; max-width: 120px; height: 2px; position: relative; background: var(--ok); }
+.map-line.ok::after {
+  content: ""; position: absolute; top: -2px; left: 0; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ok); animation: flow 1.6s linear infinite;
+}
+@keyframes flow { from { left: 0; } to { left: calc(100% - 6px); } }
+.map-line.warn { background: var(--warn); }
+.map-line.bad { background: repeating-linear-gradient(90deg, var(--bad) 0 6px, transparent 6px 11px); }
+
+/* The api uses both the database and the cache: one line in, splitting into two. */
+.map-fork { flex: none; width: 40px; align-self: stretch; position: relative; }
+.map-fork span { position: absolute; border-color: var(--ok); border-style: solid; border-width: 0; }
+.map-fork .fork-in { left: 0; top: 50%; width: 50%; border-top-width: 2px; }
+.map-fork .fork-db { left: 50%; top: 25%; width: 50%; height: 25%; border-top-width: 2px; border-left-width: 2px; }
+.map-fork .fork-cache { left: 50%; top: 50%; width: 50%; height: 25%; border-bottom-width: 2px; border-left-width: 2px; }
+.map-fork .warn { border-color: var(--warn); }
+.map-fork .bad { border-color: var(--bad); border-style: dashed; }
+.map-pair { display: flex; flex-direction: column; gap: 12px; flex: none; }
+
+/* On a phone the map turns to run top to bottom, and the database and cache sit side by side. */
+@media (max-width: 640px) {
+  .map { flex-direction: column; align-items: stretch; padding: 16px; }
+  .map-node { min-width: 0; }
+  .map-line { flex: none; align-self: center; width: 2px; height: 22px; min-width: 0; }
+  .map-line.ok::after { top: 0; left: -2px; animation-name: flow-down; }
+  .map-line.bad { background: repeating-linear-gradient(180deg, var(--bad) 0 6px, transparent 6px 11px); }
+  .map-fork { width: auto; height: 34px; align-self: stretch; }
+  .map-fork .fork-in { left: 50%; top: 0; width: 0; height: 50%; border-top-width: 0; border-left-width: 2px; }
+  .map-fork .fork-db { left: 25%; top: 50%; width: 25%; height: 50%; border-width: 2px 0 0 2px; }
+  .map-fork .fork-cache { left: 50%; top: 50%; width: 25%; height: 50%; border-width: 2px 2px 0 0; }
+  .map-pair { flex-direction: row; }
+  .map-pair .map-node { flex: 1 1 0; }
+}
+@keyframes flow-down { from { top: 0; } to { top: calc(100% - 6px); } }
 
 /* ---------- Container cards ---------- */
 
@@ -299,7 +368,7 @@ h3 { margin: 20px 0 8px; font-size: 0.75rem; text-transform: uppercase; letter-s
 .role { color: var(--muted); font-size: 0.85rem; }
 .image { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); margin-top: 8px; }
 
-/* The small coloured label: Running / Restarting / Stopped, with a glowing status light. */
+/* The small coloured label: Running / Restarting / Stopped, with a status light. */
 .badge {
   display: inline-flex; align-items: center; gap: 6px;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -307,10 +376,9 @@ h3 { margin: 20px 0 8px; font-size: 0.75rem; text-transform: uppercase; letter-s
   padding: 2px 9px; border-radius: 999px;
   background: var(--ok-soft); color: var(--ok);
 }
-.badge::before {
-  content: ""; width: 7px; height: 7px; border-radius: 50%;
-  background: currentColor; box-shadow: 0 0 8px currentColor;
-}
+.badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+/* Only a problem glows: the eye should go to what's broken, not to what's fine. */
+.badge.warn::before, .badge.bad::before { box-shadow: 0 0 8px currentColor; }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.bad { background: var(--bad-soft); color: var(--bad); }
 
@@ -319,8 +387,8 @@ h3 { margin: 20px 0 8px; font-size: 0.75rem; text-transform: uppercase; letter-s
 /* ---------- Bars (memory, disk) ---------- */
 
 .bar { height: 6px; background: var(--line); border-radius: 999px; overflow: hidden; margin-top: 6px; }
-.bar > span { display: block; height: 100%; border-radius: 999px; background: var(--ok); box-shadow: 0 0 10px var(--ok); transition: width 0.6s ease; }
-.bar.warn > span { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+.bar > span { display: block; height: 100%; border-radius: 999px; background: var(--ok); transition: width 0.6s ease; }
+.bar.warn > span { background: var(--warn); }
 .bar.bad > span { background: var(--bad); box-shadow: 0 0 10px var(--bad); }
 
 /* ---------- Health checks, disks, jobs ---------- */
@@ -339,11 +407,9 @@ h3 { margin: 20px 0 8px; font-size: 0.75rem; text-transform: uppercase; letter-s
 .step {
   display: inline-grid; place-items: center; flex: none;
   width: 28px; height: 28px; margin-right: 10px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #fff;
+  border-radius: 8px;
+  background: var(--accent); color: var(--on-accent);
   font-size: 0.9rem; font-weight: 750;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 /* ---------- Buttons and the custom fault box ---------- */
@@ -357,8 +423,8 @@ button {
   cursor: pointer;
   transition: transform 0.12s, box-shadow 0.2s, background-color 0.25s, border-color 0.25s, color 0.25s;
 }
-button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent); }
-button:active:not(:disabled) { transform: translateY(0); }
+button:hover:not(:disabled) { filter: brightness(1.08); }
+button:active:not(:disabled) { transform: translateY(1px); }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button.secondary { background: transparent; color: var(--accent); }
 /* Greyed out while it can't be used, e.g. while the server is already broken. */
@@ -366,7 +432,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .buttons button { background: var(--inset); color: var(--text); border-color: var(--line); font-weight: 550; }
-.buttons button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); box-shadow: none; }
+.buttons button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); filter: none; }
 
 .custom { display: flex; gap: 8px; flex-wrap: wrap; }
 .custom input {
@@ -397,7 +463,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 .timeline li.warn::before { border-color: var(--warn); background: var(--warn); box-shadow: 0 0 8px var(--warn); }
 .timeline li.bad::before { border-color: var(--bad); background: var(--bad); box-shadow: 0 0 8px var(--bad); }
-.timeline li.ok::before { border-color: var(--ok); background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.timeline li.ok::before { border-color: var(--ok); background: var(--ok); }
 
 .step-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .step-time { color: var(--muted); font-family: var(--mono); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
@@ -409,7 +475,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .model.nano { background: #5f9600; }   /* NVIDIA green, a bit darker so white text reads */
 .model.super { background: #2563eb; }
 .model.ultra { background: #7c3aed; }
-.model.code-check { background: #64748b; }
+.model.guardrail { background: #64748b; }  /* our own code, not a model: neutral grey */
+.model[title] { cursor: help; }             /* hover to read what the badge means */
 
 /* Long tool outputs and reports fold away; click to open. */
 details { margin-top: 6px; }
@@ -435,10 +502,7 @@ pre {
   background: var(--inset); border: 1px solid var(--line); border-radius: 12px;
   padding: 16px; display: flex; flex-direction: column; gap: 10px;
 }
-.option.recommended {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 8px 28px color-mix(in srgb, var(--accent) 18%, transparent);
-}
+.option.recommended { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .option.blocked { opacity: 0.6; border-style: dashed; }
 .option.chosen { border-color: var(--ok); background: var(--ok-soft); box-shadow: 0 0 0 1px var(--ok); }
 .option h4 { margin: 0; font-size: 1rem; }
@@ -457,7 +521,7 @@ button.armed { background: var(--warn); border-color: var(--warn); color: #1a120
 .tag.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
 .tag.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .tag.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
-.tag.accent { background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #fff; border-color: transparent; }
+.tag.accent { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 
 .decide-actions { margin-top: 14px; }
 
@@ -467,11 +531,18 @@ button.armed { background: var(--warn); border-color: var(--warn); color: #1a120
   font-size: clamp(1.8rem, 6vw, 2.4rem); font-weight: 850; letter-spacing: -0.01em;
   padding: 18px 20px; border-radius: 12px; border: 1px solid transparent;
 }
-.verdict.ok { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); text-shadow: 0 0 24px color-mix(in srgb, var(--ok) 45%, transparent); }
+.verdict.ok { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
 .verdict.warn { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
 .verdict.bad { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
 .verdict small { display: block; font-size: 0.95rem; font-weight: 500; color: var(--text); margin-top: 6px; text-shadow: none; letter-spacing: 0; }
 .verdict-details pre { max-height: none; }
+/* "Proof from the server": the new log lines, a tick in front of each request that worked. */
+.proof { margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--inset); border: 1px solid var(--line); }
+.proof .label { font-size: 0.72rem; font-weight: 750; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.proof ul { margin: 8px 0 0; padding-left: 20px; font-family: var(--mono); font-size: 0.85rem; }
+.proof li { color: var(--muted); }
+.proof li.success { color: var(--ok); font-weight: 650; }
+.proof li.success::marker { content: "✓  "; }
 .links { display: flex; gap: 10px; flex-wrap: wrap; }
 /* The postmortem links look like buttons: they're the last thing a visitor does. */
 .links a {
