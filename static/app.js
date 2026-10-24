@@ -104,16 +104,25 @@ function containerState(c) {
   return { level: "ok", label: "Running" };
 }
 
-/** One container as a card: name, role, a status label, image, uptime, memory bar. */
-function containerCard(c) {
-  const { level, label } = containerState(c);
+/**
+ * One container as a card: name, role, a status label, image, uptime, memory bar.
+ * The card's colour comes from the same check as the map (partStates): a container can be
+ * "Running" and still be the broken part, e.g. the database with a full disk. The badge stays
+ * true ("Running") and a line in red says what's wrong. (24 Oct, Pavan's phone test: during
+ * "Database disk full" every card and light was green.)
+ */
+function containerCard(c, part) {
+  const { level: statusLevel, label } = containerState(c);
+  // The map's notes, without the one the badge already shows ("restarting").
+  const problems = part.notes.filter((note) => note !== label.toLowerCase());
   const memoryPercent = Math.round((c.memory_mb / c.memory_limit_mb) * 100);
   const uptime = c.status === "running" ? `up ${timeSince(c.since)}` : `since ${timeSince(c.since)} ago`;
   const restarts = c.restarts ? `, ${c.restarts} restart${c.restarts === 1 ? "" : "s"}` : "";
 
   return `
-    <div class="card ${level}">
-      <div class="card-title">${escapeHtml(c.name)} <span class="badge ${level}">${label}</span></div>
+    <div class="card ${part.level}">
+      <div class="card-title">${escapeHtml(c.name)} <span class="badge ${statusLevel}">${label}</span></div>
+      ${problems.length ? `<div class="card-problem ${part.level}">${escapeHtml(problems.join(", "))}</div>` : ""}
       <div class="role">${escapeHtml(ROLES[c.name] || "")}</div>
       <div class="image">${escapeHtml(c.image)}</div>
       <div class="facts">${uptime}${restarts}</div>
@@ -212,8 +221,7 @@ function mapNode(name, role, part) {
  * api uses both the database and the cache. A line takes the colour of the part it leads to,
  * so a red line shows where requests stop getting through.
  */
-function renderMap(status, resolved) {
-  const p = partStates(status, resolved);
+function renderMap(p) {
   document.getElementById("map").innerHTML = `
     ${mapNode("customers", "", p.customers)}
     <div class="map-line ${p.customers.level}"></div>
@@ -254,11 +262,13 @@ function renderFocus() {
 /**
  * The small status strip on steps 2 and 3: one light per container and the alert in one line,
  * so the server is never out of sight while the visitor watches the agent or picks a fix.
+ * The lights use the same check as the map, so a full database disk shows as a red db light.
  */
-function renderStrip(status, resolved) {
+function renderStrip(status, resolved, parts) {
   const lights = status.containers.map((c) => {
-    const { level, label } = containerState(c);
-    return `<span class="light ${level}" data-part="${escapeHtml(c.name)}" title="${escapeHtml(c.name)}: ${label}"></span>${escapeHtml(c.name)}`;
+    const part = parts[c.name];
+    const why = part.notes[0] || containerState(c).label;  // hover: "db: disk 100%"
+    return `<span class="light ${part.level}" data-part="${escapeHtml(c.name)}" title="${escapeHtml(c.name)}: ${escapeHtml(why)}"></span>${escapeHtml(c.name)}`;
   }).join(" ");
   let text = "No complaints from customers.";
   if (status.alert) {
@@ -281,8 +291,11 @@ function renderStatus(status) {
   // worked, show it as resolved: a red banner over a fixed shop would tell the wrong story.
   const verdict = state.incident && state.incident.verdict;
   const resolved = verdict === "FIXED" || verdict === "FIXED FOR NOW";
-  renderStrip(status, resolved);
-  renderMap(status, resolved);
+  // One check for every part of the shop, used by the strip, the map and the container cards,
+  // so they can never disagree (they did on 24 Oct: green lights over a full database disk).
+  const parts = partStates(status, resolved);
+  renderStrip(status, resolved, parts);
+  renderMap(parts);
   if (status.alert) {
     alertBox.className = resolved ? "alert resolved" : "alert";
     // After a fix, the old complaint is gone from the banner: "placing an order fails" under a
@@ -297,7 +310,8 @@ function renderStatus(status) {
   updateBreakPanel();
   updateAgentPanel();
   updateStepper();
-  document.getElementById("containers").innerHTML = status.containers.map(containerCard).join("");
+  document.getElementById("containers").innerHTML =
+    status.containers.map((c) => containerCard(c, parts[c.name])).join("");
   document.getElementById("endpoints").innerHTML = status.endpoints.map(endpointRow).join("");
   document.getElementById("disks").innerHTML = status.disks.map(diskRow).join("");
   document.getElementById("jobs").innerHTML = status.jobs.map(jobRow).join("");
@@ -556,11 +570,17 @@ const BADGE_INFO = {
   Guardrail: "Our own code checking the AI's work. No AI model in this step.",
 };
 
+/** When a step happened, in the visitor's own time (the server runs on UTC and sends the time zone). */
+function stepTime(step) {
+  if (!step.time) return step.at;  // a step from before the server sent full times
+  return new Date(step.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
 /** One step's heading: time, which model (or our code) did it, and a title. */
 function stepHead(step, model, title) {
   const info = BADGE_INFO[model] ? ` title="${BADGE_INFO[model]}"` : "";
   const badge = model ? `<span class="model ${model.toLowerCase().replace(" ", "-")}"${info}>${model}</span>` : "";
-  return `<div class="step-head"><span class="step-time">${escapeHtml(step.at)}</span>${badge}
+  return `<div class="step-head"><span class="step-time">${escapeHtml(stepTime(step))}</span>${badge}
           <span class="step-title">${title}</span></div>`;
 }
 

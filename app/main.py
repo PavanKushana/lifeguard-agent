@@ -115,6 +115,15 @@ def check_spending(request: Request) -> None:
         raise HTTPException(429, reason)
 
 
+def iso(moment: datetime) -> str:
+    """A time for the browser WITH its time zone, e.g. "2026-10-24T19:12:07+00:00".
+
+    The live server runs on UTC. Without the "+00:00" a phone in Germany read "19:12" as German
+    time, two hours ago, and the agent's clock showed "Working... 7221 s" (24 Oct, Pavan's phone test).
+    """
+    return moment.astimezone().isoformat(timespec="seconds")
+
+
 def server_status(server: Server) -> dict:
     """What the dashboard shows: containers, disks, jobs and health checks, as plain JSON.
 
@@ -123,7 +132,7 @@ def server_status(server: Server) -> dict:
     return {
         "containers": [
             {"name": c.name, "image": c.image, "status": c.status, "exit_code": c.exit_code,
-             "restarts": c.restarts, "since": c.since.isoformat(timespec="seconds"),
+             "restarts": c.restarts, "since": iso(c.since),
              "cpu_percent": c.cpu_percent, "memory_mb": c.memory_mb, "memory_limit_mb": c.memory_limit_mb}
             for c in server.containers.values()
         ],
@@ -155,7 +164,7 @@ def status(session: Session = Depends(current_session)) -> dict:
     """Show the visitor's own server: healthy at first, broken after a fault, repaired after a fix."""
     # Only the alert, like a real on-call person gets: what users see, not why it happens.
     alert = session.fault["alert"] if session.fault else None
-    return {"session_started": session.created.isoformat(timespec="seconds"), "alert": alert,
+    return {"session_started": iso(session.created), "alert": alert,
             **server_status(session.server)}
 
 
@@ -194,7 +203,7 @@ def build_view(session: Session) -> dict:
     """The fault build as JSON for the page. Never the fault itself: only the alert, once it's ready."""
     build = session.build
     return {"kind": build.kind, "idea": build.idea, "state": build.state, "message": build.message,
-            "note": build.note, "started": build.started.isoformat(timespec="seconds"), "cost": build.cost,
+            "note": build.note, "started": iso(build.started), "cost": build.cost,
             "alert": session.fault["alert"] if build.state == "ready" else None}
 
 
@@ -362,7 +371,7 @@ def final_call_view(final: dict) -> dict:
 def incident_view(incident: Incident) -> dict:
     """The incident as JSON for the page: state, timeline so far, and at the end the cost and fix options."""
     view = {"state": incident.state, "alert": incident.alert,
-            "started": incident.started.isoformat(timespec="seconds"),
+            "started": iso(incident.started),
             "steps": incident.steps, "error": incident.error}
     if incident.result:
         view["cost"] = incident.result["usage"].summary()

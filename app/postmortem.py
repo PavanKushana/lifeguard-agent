@@ -55,6 +55,16 @@ def steps_text(steps: list) -> list[str]:
     return lines
 
 
+def zone_name(moment: datetime) -> str:
+    """The time zone of the report's times: "UTC" on the live server, e.g. "UTC+02:00" on a laptop in Germany.
+
+    Without it, a visitor reads the server's UTC times as their own and they look hours off.
+    """
+    # A time without a zone is the server's own clock: attach the server's zone. One with a zone keeps it.
+    offset = (moment if moment.tzinfo else moment.astimezone()).strftime("%z")  # "+0000", "+0200"
+    return "UTC" if offset in ("+0000", "-0000") else f"UTC{offset[:3]}:{offset[3:]}"
+
+
 def build_postmortem(incident: dict) -> str:
     """Turn everything recorded during one incident into a postmortem in markdown.
 
@@ -72,7 +82,8 @@ def build_postmortem(incident: dict) -> str:
     searches = sum(1 for entry in evidence if entry.startswith("$ search_web"))
 
     lines = [f"# Postmortem: {incident['alert']}", "",
-             f"**Date:** {incident['started']:%Y-%m-%d %H:%M}  ",
+             f"**Date:** {incident['started']:%Y-%m-%d %H:%M} {zone_name(incident['started'])} "
+             f"(all times in this report are {zone_name(incident['started'])})  ",
              f"**Result:** {verification['verdict']}  ",
              f"**Decision by:** {decision.get('by', '-')}  ",
              "*Blameless: this is about what happened, not who.*", ""]

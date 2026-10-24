@@ -55,7 +55,10 @@ class Incident:
         """Record one step of the agent. Passed to the agent as its on_step, like print_step in the terminal."""
         now = datetime.now()
         self.times.setdefault(kind, now)  # setdefault: a later step of the same kind keeps the first time
-        self.steps.append({"kind": kind, "text": text, "at": f"{now:%H:%M:%S}"})
+        # "at" is the server's clock for the terminal; "time" carries the time zone, so the web page
+        # can show it in the visitor's own time (the live server runs on UTC).
+        self.steps.append({"kind": kind, "text": text, "at": f"{now:%H:%M:%S}",
+                           "time": now.astimezone().isoformat(timespec="seconds")})
 
 
 @dataclass
