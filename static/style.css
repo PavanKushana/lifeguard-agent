@@ -177,9 +177,45 @@ main[data-step="4"] .strip { order: -2; }
 
 #again { margin-top: 4px; }
 
-/* On a phone the tabs get small: number above a short label. */
-@media (max-width: 560px) {
-  .stepper button { flex-direction: column; gap: 3px; padding: 7px 2px; font-size: 0.72rem; }
+/* ---------- Phone: the step tabs become a tab bar at the bottom, like an app ---------- */
+
+/* The icons only show on a phone; on a laptop the tabs keep their numbers. */
+.tab-icon { display: none; }
+
+@media (max-width: 640px) {
+  /* Fixed to the bottom edge and full width, like Instagram's tab bar: easy to reach with a thumb.
+     env(safe-area-inset-bottom) keeps it above the home bar on iPhones without a home button. */
+  .stepper {
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 20;
+    margin: 0; padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
+    gap: 0;
+    border-width: 1px 0 0; border-radius: 0;
+    box-shadow: 0 -6px 18px rgba(15, 23, 42, 0.08);
+  }
+  .stepper button {
+    position: relative;
+    flex-direction: column; gap: 2px;
+    padding: 6px 2px 5px;
+    font-size: 0.68rem; font-weight: 600;
+  }
+  .stepper .tab-icon { display: block; width: 24px; height: 24px; }
+  /* The open step: icon and label in blue with a short line on top, no box around it. */
+  .stepper button.active { background: transparent; border-color: transparent; color: var(--accent); }
+  .stepper button.active::before {
+    content: ""; position: absolute; top: -4px; left: 30%; right: 30%; height: 3px;
+    border-radius: 0 0 3px 3px; background: var(--accent);
+  }
+  /* No numbers on a phone: a finished step gets a small green tick on its icon instead. */
+  .stepper .num { display: none; }
+  .stepper button.done .num {
+    display: grid; position: absolute; top: 2px; left: calc(50% + 6px);
+    width: 16px; height: 16px; border-radius: 50%;
+    font-size: 0.6rem; border: 2px solid var(--panel);
+  }
+  /* The page ends above the tab bar, so nothing hides behind it. */
+  body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
+  /* The headline's line break is placed for a laptop; on a phone it left "3 a.m.," alone on a line. */
+  .hero h1 br { display: none; }
   .next button { width: 100%; }
 }
 

@@ -8,8 +8,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <!-- Without this line, phones show a tiny zoomed-out desktop page. -->
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Without this line, phones show a tiny zoomed-out desktop page. viewport-fit=cover lets the
+       bottom tab bar know the size of the iPhone home bar, so it can sit just above it. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Lifeguard: AI on-call engineer</title>
   <!-- The tab icon: a red-and-white life buoy, drawn as a tiny SVG right here (no image file needed). -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23dc2626' stroke-width='7'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='white' stroke-width='7' stroke-dasharray='8.64 8.64'/%3E%3C/svg%3E">
@@ -55,7 +56,8 @@
 
   <header>
     <div class="hero">
-      <h1>When the shop goes down at 3 a.m.,<br>Lifeguard finds out why.</h1>
+      <!-- The space before <br> matters: on a phone the line break is hidden and the words must not run together. -->
+      <h1>When the shop goes down at 3 a.m., <br>Lifeguard finds out why.</h1>
       <p class="tagline">It does what an on-call engineer would do: reads the logs, checks the disks,
         looks at what changed, and searches the web for errors it doesn't know.
         Then it tells you what went wrong and how to fix it. Nothing changes until you say yes.</p>
@@ -68,12 +70,34 @@
   <!-- data-step says which step is on screen; style.css shows only the sections of that step. -->
   <main id="main" data-step="1">
     <!-- The four steps, like a checkout (cart, address, payment, done): one step on screen at a time.
-         Steps not reached yet are greyed out; finished ones stay clickable to look back. -->
+         Steps not reached yet are greyed out; finished ones stay clickable to look back.
+         On a laptop they sit under the header with numbers; on a phone they become a tab bar at the
+         bottom of the screen with icons, like Instagram's (the icons only show there, see style.css). -->
     <nav class="stepper" id="stepper" aria-label="Steps">
-      <button type="button" data-step="1"><span class="num">1</span><span class="label">Break</span></button>
-      <button type="button" data-step="2"><span class="num">2</span><span class="label">Investigate</span></button>
-      <button type="button" data-step="3"><span class="num">3</span><span class="label">Decide</span></button>
-      <button type="button" data-step="4"><span class="num">4</span><span class="label">Result</span></button>
+      <button type="button" data-step="1">
+        <!-- a lightning bolt: something breaks -->
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>
+        <span class="num">1</span><span class="label">Break</span>
+      </button>
+      <button type="button" data-step="2">
+        <!-- a magnifying glass: the agent looks around -->
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span class="num">2</span><span class="label">Investigate</span>
+      </button>
+      <button type="button" data-step="3">
+        <!-- a ticked box: you choose a fix -->
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></svg>
+        <span class="num">3</span><span class="label">Decide</span>
+      </button>
+      <button type="button" data-step="4">
+        <!-- a flag: the finish -->
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
+        <span class="num">4</span><span class="label">Result</span>
+      </button>
     </nav>
 
     <!-- A small status strip on steps 2 and 3, like a phone's status bar: the server at a glance.
@@ -106,9 +130,10 @@
       <!-- Short messages for the visitor: "Building your fault...", the guard's refusal, errors. -->
       <div id="break-message" class="message" hidden></div>
 
-      <!-- Once the server is broken: the way to the next step. -->
+      <!-- Once the server is broken: the way to the next step. app.js sets the words for the situation
+           (broken, agent called, fixed or not fixed). -->
       <div id="next-investigate" class="next" hidden>
-        <span>The shop is broken and customers are complaining.</span>
+        <span id="next-investigate-text">The shop is broken and customers are complaining.</span>
         <button type="button" id="go-investigate">Call the agent →</button>
       </div>
     </section>

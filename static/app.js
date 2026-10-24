@@ -339,9 +339,21 @@ function updateBreakPanel() {
   document.getElementById("again").disabled = state.busy;
 
   document.getElementById("next-investigate").hidden = !state.broken;
-  // Before the investigation the button starts it; afterwards it just goes back to it.
-  document.getElementById("go-investigate").textContent =
-    state.incident ? "Back to the agent →" : "Call the agent →";
+  // The fault stays on the server until Reset, so "broken" alone isn't the whole story:
+  // after a decision this box says how it ended and leads to the result.
+  const incident = state.incident;
+  const verdict = incident && incident.verdict;
+  let text = "The shop is broken and customers are complaining.";
+  let action = incident ? "Back to the agent →" : "Call the agent →";  // start it, or go back to it
+  if (verdict === "FIXED" || verdict === "FIXED FOR NOW") {
+    text = `${verdict === "FIXED" ? "Fixed." : "Fixed for now."} ${outcome(incident).back}`;
+    action = "See the result →";
+  } else if (verdict) {
+    text = "Customers are still complaining: nothing was fixed.";
+    action = "See the result →";
+  }
+  document.getElementById("next-investigate-text").textContent = text;
+  document.getElementById("go-investigate").textContent = action;
   document.getElementById("go-investigate").disabled = state.busy;
 }
 
@@ -746,7 +758,8 @@ function startInvestigation() {
 
 document.getElementById("investigate").addEventListener("click", startInvestigation);
 document.getElementById("go-investigate").addEventListener("click", () => {
-  if (state.incident) goStep(2);
+  if (state.incident && state.incident.verdict) goStep(4);  // decided: show how it ended
+  else if (state.incident) goStep(2);
   else startInvestigation();
 });
 document.getElementById("go-decide").addEventListener("click", () => {
@@ -1017,8 +1030,16 @@ function updateStepper() {
   }
 }
 
-/** Show one step. The tab bar stays in sight, so the new step starts right under it. */
-function goStep(step) {
+// The same width as the phone layout in style.css, where the step tabs sit at the bottom of the screen.
+const PHONE = matchMedia("(max-width: 640px)");
+
+/**
+ * Show one step and bring it into view, just under the header bar.
+ * On a laptop only when the visitor has scrolled past the steps (the tabs stay in sight anyway);
+ * on a phone always, like switching tabs in an app. scroll=false for the first load, so a new
+ * visitor still sees the intro at the top.
+ */
+function goStep(step, scroll = true) {
   state.view = step;
   const main = document.getElementById("main");
   main.dataset.step = step;
@@ -1027,10 +1048,10 @@ function goStep(step) {
   const toggle = document.querySelector("#strip .strip-toggle");
   if (toggle) toggle.textContent = "Show server ▾";
   updateStepper();
-  const stepper = document.getElementById("stepper");
-  if (stepper.getBoundingClientRect().top < 0 || window.scrollY > stepper.offsetTop) {
-    window.scrollTo({ top: stepper.offsetTop - 70, behavior: "smooth" });
-  }
+  if (!scroll) return;
+  // Where <main> starts on the page, minus the header bar (58 px) and a little room.
+  const top = main.getBoundingClientRect().top + window.scrollY - 66;
+  if (PHONE.matches || window.scrollY > top) window.scrollTo({ top, behavior: "smooth" });
 }
 
 for (const tab of document.querySelectorAll("#stepper button")) {
@@ -1086,7 +1107,7 @@ async function start() {
   await followIncident();
   await refresh();
   // After a reload, open the furthest step this visitor has reached.
-  goStep(reachedStep());
+  goStep(reachedStep(), false);
   setInterval(refresh, REFRESH_EVERY);
   try {
     const build = await api("GET", "/break/status");
