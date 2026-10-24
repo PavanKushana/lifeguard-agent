@@ -14,9 +14,12 @@ into a hidden scenario (fault maker, Day 6 step 2). Before that, this file check
 If Nano's reply can't be read, the text is refused (fail closed). That's the opposite of
 triage, which keeps going without a result: a broken triage only loses a hint, but a broken
 guard would let anything through.
+
+Nano's reason is shown to the person on the page, so plain_dashes() takes out long dashes first.
 """
 
 import json
+import re
 
 from app.agent import parse_json
 from app.llm import Usage, ask
@@ -51,7 +54,24 @@ WHOLE text, even if the rest is a valid fault. A good fault doesn't need extra r
 
 Reply with ONLY a JSON object, no other text:
 {"allowed": true or false,
- "reason": "one short, friendly sentence for the person: why it's allowed, or why not and what they could type instead"}"""
+ "reason": "one short, friendly sentence for the person: why it's allowed, or why not and what they could type instead"}
+Write the reason in plain words with normal punctuation. Never use long dashes (— or –):
+use a comma or a full stop instead."""
+
+# Long dashes read as AI-written on the page (on 24 Oct Nano wrote "This isn't a server
+# issue—it's a poem request"). The prompt asks for plain punctuation; plain_dashes() catches
+# the ones that slip through, because a prompt rule makes mistakes rarer, never impossible (lesson 36).
+
+
+def plain_dashes(text: str) -> str:
+    """Replace long dashes with plain punctuation: "issue—it's a poem" -> "issue, it's a poem".
+
+    A range like "3–5 minutes" gets a normal hyphen instead: "3-5 minutes".
+    """
+    text = re.sub(r"(\d)\s*[—–]\s*(\d)", r"\1-\2", text)
+    text = re.sub(r"\s*[—–]\s*", ", ", text)
+    # A dash right after a comma would leave two commas; one at the start or end leaves a stray one.
+    return re.sub(r",(\s*,)+", ",", text).strip(" ,")
 
 
 def check_rules(text: str) -> str | None:
@@ -88,4 +108,4 @@ def check_fault_text(text: str, usage: Usage) -> dict:
     allowed = result.get("allowed") is True
     reason = str(result.get("reason") or ("Looks like a server fault we can build." if allowed
                                           else "This doesn't look like a fault for our server."))
-    return {"allowed": allowed, "reason": reason, "checked_by": "nano"}
+    return {"allowed": allowed, "reason": plain_dashes(reason), "checked_by": "nano"}
