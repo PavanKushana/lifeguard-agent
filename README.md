@@ -2,7 +2,9 @@
 
 [![Tests](https://github.com/PavanKushana/lifeguard-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/PavanKushana/lifeguard-agent/actions/workflows/tests.yml)
 
-> 🚧 Work in progress for the Nebius x NVIDIA Global AI Hackathon (October 2026). Live demo link coming soon.
+**Live demo: [lifeguard-agent.com](https://lifeguard-agent.com)** (backup: [lifeguard-agent.onrender.com](https://lifeguard-agent.onrender.com))
+
+> 🚧 Work in progress for the Nebius x NVIDIA Global AI Hackathon (October 2026).
 
 An AI on-call engineer for small teams that run their app as Docker containers on a single server.
 
@@ -69,7 +71,7 @@ first investigation for them and shows every step, so they can trust (or questio
 - [x] Custom faults (built by Ultra, checked in code) and random faults
 - [x] Web app with live updates, works on phones
 - [x] Docker image, tests on GitHub Actions on every push
-- [ ] Live demo link
+- [x] Live demo on [lifeguard-agent.com](https://lifeguard-agent.com) (Render, deploys only after the tests pass)
 - [ ] Phone alerts with Telegram
 - [ ] Evaluation on 20 faults
 
