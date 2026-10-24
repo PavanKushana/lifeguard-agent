@@ -30,6 +30,7 @@ from app.fault_maker import make_fault, random_idea
 from app.faults import PRESETS, apply_fault
 from app.fixes import apply_fix, verify
 from app.guard import check_fault_text
+from app.limits import try_start_ai_run
 from app.llm import Usage, describe_error
 from app.postmortem import build_postmortem
 from app.sessions import COOKIE_NAME, IDLE_LIMIT, FaultBuild, Incident, Session, get_or_create
@@ -59,7 +60,7 @@ class CustomIdea(BaseModel):
     idea: str = Field(examples=["the cache runs out of memory and gets killed"])
 
 app = FastAPI(
-    title="Lifeguard Agent",
+    title="Lifeguard-Agent",
     description="AI SRE for small teams on one Docker host.",
 )
 
@@ -86,6 +87,32 @@ def current_session(request: Request, response: Response) -> Session:
     response.set_cookie(COOKIE_NAME, session.id, max_age=int(IDLE_LIMIT.total_seconds()),
                         httponly=True, samesite="lax")
     return session
+
+
+def visitor_ip(request: Request) -> str:
+    """The visitor's IP address, for the per-visitor spending limit.
+
+    On Render every request passes Cloudflare first, which writes the real address into
+    CF-Connecting-IP; a visitor can't fake that header, because Cloudflare overwrites it.
+    Behind Caddy (the Nebius VM) the proxy writes it into X-Forwarded-For instead. Running
+    locally there's no proxy, so it's the address of the connection itself.
+    """
+    if request.headers.get("cf-connecting-ip"):
+        return request.headers["cf-connecting-ip"].strip()
+    if request.headers.get("x-forwarded-for"):
+        # The first entry is the visitor; later ones are proxies on the way.
+        return request.headers["x-forwarded-for"].split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def check_spending(request: Request) -> None:
+    """Count one AI run, or refuse it with 429 Too Many Requests and a sentence for the visitor.
+
+    Called only after every other check passed, so a refused or impossible request costs no place.
+    """
+    reason = try_start_ai_run(visitor_ip(request))
+    if reason:
+        raise HTTPException(429, reason)
 
 
 def server_status(server: Server) -> dict:
@@ -234,14 +261,16 @@ def start_build(session: Session, kind: str, idea: str, usage: Usage) -> dict:
 
 
 @app.post("/break/custom")
-def break_custom(body: CustomIdea, session: Session = Depends(current_session)) -> dict:
+def break_custom(body: CustomIdea, request: Request, session: Session = Depends(current_session)) -> dict:
     """Break the server with a fault the visitor describes, e.g. "the cache runs out of memory".
 
     First the guard checks the text (free rules, then Nano), so only faults for our server get built;
     a refusal comes back at once as 400 with the reason. Then Ultra builds the fault in the
     background (10 seconds to 2 minutes): follow it with GET /break/status.
+    Counts as one AI run for the spending limit (429 when it's reached).
     """
     check_can_break(session)  # before the guard, so a refused break costs no tokens
+    check_spending(request)
     usage = Usage()
     verdict = check_fault_text(body.idea, usage)
     if not verdict["allowed"]:
@@ -250,11 +279,14 @@ def break_custom(body: CustomIdea, session: Session = Depends(current_session)) 
 
 
 @app.post("/break/random")
-def break_random(session: Session = Depends(current_session)) -> dict:
+def break_random(request: Request, session: Session = Depends(current_session)) -> dict:
     """ "Surprise me": Ultra builds a fault from one of our own ideas, kept secret until the end.
 
     No guard needed, the idea is ours. Follow the build with GET /break/status.
+    Counts as one AI run for the spending limit (429 when it's reached).
     """
+    check_can_break(session)  # first, so a click on an already broken server costs no place
+    check_spending(request)
     return start_build(session, "random", random_idea(), Usage())
 
 
@@ -349,11 +381,12 @@ def incident_view(incident: Incident) -> dict:
 
 
 @app.post("/investigate")
-def investigate(session: Session = Depends(current_session)) -> dict:
+def investigate(request: Request, session: Session = Depends(current_session)) -> dict:
     """Start the agent on the visitor's broken server. Answers at once; the agent keeps working in the background.
 
     The agent takes 20-40 seconds. A request that waited that long would look frozen, so this only
     starts it, and the page follows the steps with GET /incident.
+    Counts as one AI run for the spending limit (429 when it's reached).
     """
     if session.fault is None:
         if session.build is not None and session.build.state == "building":
@@ -361,6 +394,7 @@ def investigate(session: Session = Depends(current_session)) -> dict:
         raise HTTPException(409, "Nothing is broken yet. Break the server first.")
     if session.incident is not None:
         raise HTTPException(409, "The agent already ran on this fault. Call POST /reset to start again.")
+    check_spending(request)
     session.incident = Incident(alert=session.fault["alert"])
     # daemon=True: if the API stops, it doesn't wait for a half-finished agent.
     threading.Thread(target=run_agent, args=(session.server, session.incident), daemon=True).start()

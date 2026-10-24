@@ -1,0 +1,20 @@
+# render.yaml
+# How Render runs the public demo (a Render "Blueprint"): one free web service, built from the
+# Dockerfile. Render reads this file when the repo is connected, so the setup is written down
+# here instead of being clicked together by hand.
+# The secrets are NOT in here: Render asks for their values once, when the Blueprint is created.
+
+services:
+  - type: web
+    name: lifeguard-agent
+    runtime: docker
+    plan: free
+    region: frankfurt              # close to Germany, and to Nebius Token Factory in Europe
+    branch: main
+    healthCheckPath: /health       # Render checks this before it switches visitors to a new version
+    autoDeployTrigger: checksPass  # deploy only after the GitHub tests pass (.github/workflows/tests.yml)
+    envVars:
+      - key: NEBIUS_API_KEY
+        sync: false                # asked for once in the Render dashboard, never stored in git
+      - key: TAVILY_API_KEY
+        sync: false

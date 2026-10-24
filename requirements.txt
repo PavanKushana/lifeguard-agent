@@ -1,6 +1,9 @@
-openai
-python-dotenv
-tavily-python
-pytest
-fastapi
-uvicorn
+# Exact versions, tested together (24 Oct 2026). The live demo installs exactly these, so a new
+# release can't quietly change or break it during judging. To update one on purpose:
+# pip install -U <name>, run the tests, then write the new number here.
+openai==3.35.1
+python-dotenv==1.2.4
+tavily-python==0.8.5
+pytest==9.1.1
+fastapi==0.161.1
+uvicorn==0.54.0

@@ -2,7 +2,7 @@
 comparing_models.py
 Sends the same server error to several Nemotron models
 and prints each answer with its time and token count,
-so we can pick the right model for each job in Lifeguard Agent.
+so we can pick the right model for each job in Lifeguard-Agent.
 """
 
 import os

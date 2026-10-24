@@ -1,0 +1,59 @@
+# tests.yml
+# GitHub Actions: on every push, GitHub runs this on its own Linux machine (free for public repos).
+# 1. pytest: all the tests that don't need AI.
+# 2. docker: builds the image from the Dockerfile and checks the app really starts in it.
+# The result is the green tick (or red cross) next to each commit on GitHub. Render waits for the
+# green tick before it deploys (autoDeployTrigger: checksPass in render.yaml), so a broken commit
+# never reaches the live demo.
+
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:   # adds a "Run workflow" button in the Actions tab, to run it by hand
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install the packages
+        run: pip install -r requirements.txt
+      - name: Run the tests
+        run: python -m pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t lifeguard-agent .
+      # No API keys here on purpose: the app must start without them (it only needs them for AI calls).
+      - name: Start it and wait for /health
+        run: |
+          docker run -d --name lifeguard-agent -p 8000:8000 lifeguard-agent
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs lifeguard-agent
+          exit 1
+      - name: The page and the API answer
+        run: |
+          curl -fsS http://localhost:8000/ | grep -q "Lifeguard-Agent"
+          curl -fsS http://localhost:8000/status | grep -q "containers"
+      - name: Docker's own health check says healthy
+        run: |
+          for i in $(seq 1 24); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' lifeguard-agent)
+            echo "health: $status"
+            if [ "$status" = "healthy" ]; then exit 0; fi
+            sleep 5
+          done
+          docker logs lifeguard-agent
+          exit 1

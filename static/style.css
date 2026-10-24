@@ -234,6 +234,9 @@ main[data-step="4"] .strip { order: -2; }
   display: flex; justify-content: space-between; align-items: center; gap: 12px;
 }
 .brand { display: flex; align-items: center; gap: 10px; font-size: 1.15rem; font-weight: 750; letter-spacing: -0.01em; }
+/* "Lifeguard-Agent" stays on one line: a narrow phone would otherwise break it at the hyphen. */
+.nowrap { white-space: nowrap; }
+
 /* The life buoy (an SVG drawing in index.html). */
 .logo { width: 26px; height: 26px; flex: none; }
 

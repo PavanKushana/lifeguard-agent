@@ -1,0 +1,11 @@
+# .gitattributes
+# Line endings: store and check out text files with LF (the Linux style), also on Windows.
+# The app runs on Linux (Docker, Render, the Nebius VM), where a Windows line ending (CRLF)
+# can break a shell command or a Dockerfile line, and it keeps the git history free of
+# "every line changed" diffs that are only line endings.
+* text=auto eol=lf
+
+# Images are binary: never touch their bytes.
+*.png binary
+*.jpg binary
+*.ico binary

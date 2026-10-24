@@ -1,4 +1,4 @@
-# Lifeguard Agent
+# Lifeguard-Agent
 
 > 🚧 Work in progress for the Nebius x NVIDIA Global AI Hackathon (October 2026). The name may still change.
 
@@ -10,7 +10,7 @@ without a human approving it. Built with NVIDIA Nemotron models on Nebius Token 
 
 ## Why
 Big companies have SRE teams and expensive monitoring tools. A small team with one server usually has
-one developer who gets woken up at 3 a.m. and has to dig through logs alone. Lifeguard Agent does that
+one developer who gets woken up at 3 a.m. and has to dig through logs alone. Lifeguard-Agent does that
 first investigation for them and shows every step, so they can trust (or question) the result.
 
 ## How it works

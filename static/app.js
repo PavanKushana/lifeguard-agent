@@ -40,6 +40,7 @@ const state = {
   building: false,  // Ultra is building a custom or random fault
   busy: false,      // a request from a button is on its way (stops double clicks)
   incident: null,   // the agent's run on this fault: null before "Start the investigation"
+  sessionStarted: null,  // when the server made this visitor's session: a new value = a new session
   view: 1,          // which step is on screen: 1 Break, 2 Investigate, 3 Decide, 4 Result
   focus: null,      // the part the agent is checking right now (e.g. "api"), lit up on the map
 };
@@ -303,11 +304,29 @@ function renderStatus(status) {
   renderFocus();  // the map and strip were just redrawn: light the checked part up again
 }
 
+/**
+ * The server forgets every session when it restarts (each update of the live demo) or after
+ * 2 hours without a visit, and the page then gets a new, healthy server. Say so, instead of
+ * silently dropping the visitor's incident (lesson 47).
+ */
+function noticeNewSession(started) {
+  const known = state.sessionStarted;
+  state.sessionStarted = started;
+  if (!known || known === started) return;
+  stopWatching();
+  clearAgent();
+  goStep(1);
+  showBreakMessage("Your session ended (the demo was updated, or you were away for over 2 hours), " +
+                   "so here is a fresh, healthy shop. Pick a problem to start again.");
+}
+
 /** Ask for the latest server state and redraw. Shows a short note if the API can't be reached. */
 async function refresh() {
   const updated = document.getElementById("updated");
   try {
-    renderStatus(await api("GET", "/status"));
+    const status = await api("GET", "/status");
+    noticeNewSession(status.session_started);
+    renderStatus(status);
     updated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
   } catch (error) {
     updated.textContent = `Can't reach the server: ${error.message}`;

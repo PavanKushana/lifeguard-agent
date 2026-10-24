@@ -84,7 +84,7 @@ def apply_fix(server: Server, decision: dict) -> list[str]:
     for step in decision["option"]["steps"]:
         line = run_step(server, step)
         # Like a real team's change log: what was done and who approved it.
-        server.add_change(f"Lifeguard fix: {line} (approved by {decision['by']})")
+        server.add_change(f"Lifeguard-Agent fix: {line} (approved by {decision['by']})")
         done.append(line)
     return done
 

@@ -1,0 +1,20 @@
+# .dockerignore
+# Files Docker never sends to the build. The Dockerfile copies only app/ and static/ anyway;
+# this list is the second lock on the door, so secrets can't end up in an image by accident.
+
+# Secrets
+.env
+
+# Local and generated files
+.venv/
+.git/
+**/__pycache__/
+.pytest_cache/
+
+# Not needed by the running app
+results/
+scripts/
+tests/
+.github/
+*.md
+render.yaml
