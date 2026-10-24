@@ -1,41 +1,61 @@
 /*
   style.css
-  The look of the page. Colours are defined once at the top as variables, so the
-  whole page changes together, and there is a dark version for people whose
-  computer is set to dark mode.
+  The look of the page: a "control room" style, like the monitoring tools on-call engineers
+  use, with glowing status lights. Colours are defined once at the top as variables, so the
+  whole page changes together. There is a light and a dark version: the sun/moon button in
+  the header switches between them (app.js sets data-theme="light" or "dark" on <html>).
 */
 
+/* ---------- Colours: light theme ---------- */
+
 :root {
-  --bg: #f4f6f8;
+  color-scheme: light;  /* scrollbars and form fields follow the theme too */
+  --bg: #f3f6fb;
+  --bg-glow: rgba(37, 99, 235, 0.10);   /* the soft light at the top of the page */
+  --grid: rgba(15, 23, 42, 0.035);      /* the faint grid lines behind everything */
+  --bar-bg: rgba(243, 246, 251, 0.82);  /* the header bar, see-through */
   --panel: #ffffff;
-  --text: #1c2430;
-  --muted: #6b7684;
-  --line: #e1e5ea;
-  --ok: #1f9d55;
-  --ok-soft: #e3f5ea;
-  --warn: #c77700;
-  --warn-soft: #fff1dc;
-  --bad: #d64545;
-  --bad-soft: #fde8e8;
+  --inset: #f6f8fc;                     /* boxes inside a panel: cards, code, messages */
+  --text: #0f172a;
+  --muted: #5f6b7d;
+  --line: #e2e8f0;
+  --ok: #15803d;
+  --ok-soft: #dcfce7;
+  --warn: #b45309;
+  --warn-soft: #fef3c7;
+  --bad: #dc2626;
+  --bad-soft: #fee2e2;
   --accent: #2563eb;
-  --radius: 10px;
+  --accent-2: #7c3aed;
+  --on-accent: #ffffff;                 /* text on an accent-coloured button */
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --radius: 14px;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f141a;
-    --panel: #18202a;
-    --text: #e6ebf1;
-    --muted: #8d99a8;
-    --line: #2a3542;
-    --ok: #3ccf7a;
-    --ok-soft: #173525;
-    --warn: #f0a640;
-    --warn-soft: #3a2a12;
-    --bad: #f06a6a;
-    --bad-soft: #3d1c1f;
-    --accent: #6b9bff;
-  }
+/* ---------- Colours: dark theme ---------- */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #070b11;
+  --bg-glow: rgba(56, 189, 248, 0.12);
+  --grid: rgba(148, 163, 184, 0.05);
+  --bar-bg: rgba(7, 11, 17, 0.78);
+  --panel: #0d131b;
+  --inset: #0a0f16;
+  --text: #e2e8f0;
+  --muted: #8b98aa;
+  --line: #1c2735;
+  --ok: #34d399;
+  --ok-soft: rgba(52, 211, 153, 0.12);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.12);
+  --bad: #f87171;
+  --bad-soft: rgba(248, 113, 113, 0.13);
+  --accent: #60a5fa;
+  --accent-2: #a78bfa;
+  --on-accent: #06121f;  /* the accent is light here, so dark text reads better on it */
+  --shadow: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 12px 32px rgba(0, 0, 0, 0.4);
 }
 
 * { box-sizing: border-box; }
@@ -45,38 +65,204 @@
 
 body {
   margin: 0;
-  background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  line-height: 1.45;
+  line-height: 1.5;
+  /* A soft glow at the top over a faint grid, like a monitoring screen. */
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1100px 480px at 50% -120px, var(--bg-glow), transparent 70%),
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: auto, 32px 32px, 32px 32px;
+  min-height: 100vh;
 }
 
-main { max-width: 1100px; margin: 0 auto; padding: 0 16px 48px; }
+/* Switching themes fades the colours instead of jumping. */
+body, .panel, .card, .option, .alert, button, input {
+  transition: background-color 0.25s, border-color 0.25s, color 0.25s;
+}
+
+/* A column, so a section can be moved up for one step with "order" (Result above the server on step 4). */
+main { max-width: 1100px; margin: 0 auto; padding: 0 16px 64px; display: flex; flex-direction: column; }
+
+/* ---------- One step at a time ---------- */
+
+/* Every section belongs to one or more steps (classes s1 to s4) and only shows on those. */
+.view { display: none; }
+main[data-step="1"] .s1,
+main[data-step="2"] .s2,
+main[data-step="3"] .s3,
+main[data-step="4"] .s4 { display: block; animation: step-in 0.3s ease; }
+/* On steps 2 and 3 the full server is hidden behind the status strip; a click shows it. */
+main.show-server[data-step="2"] #server-panel,
+main.show-server[data-step="3"] #server-panel { display: block; animation: step-in 0.3s ease; }
+main[data-step="4"] #result-panel { order: -1; }
+.stepper { order: -2; }
+.strip { order: -1; }
+main[data-step="4"] .strip { order: -2; }
+
+/* A new step slides in gently instead of jumping. */
+@keyframes step-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* The step tabs. They stick under the header bar, so the way back is always in sight. */
+.stepper {
+  position: sticky; top: 66px; z-index: 9;  /* just under the header bar (58px high) */
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  margin-top: 20px; padding: 6px;
+  background: var(--bar-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.stepper button {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 9px 8px; border-radius: 10px;
+  background: transparent; color: var(--muted); border: 1px solid transparent;
+  font-weight: 650;
+}
+.stepper button:hover:not(:disabled) { background: var(--inset); color: var(--text); box-shadow: none; transform: none; }
+.stepper .num {
+  display: inline-grid; place-items: center; flex: none;
+  width: 24px; height: 24px; border-radius: 8px;
+  background: var(--inset); border: 1px solid var(--line);
+  font-size: 0.8rem;
+}
+/* The step on screen. */
+.stepper button.active { background: var(--panel); color: var(--text); border-color: var(--line); }
+.stepper button.active .num {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border-color: transparent;
+}
+/* A finished step: a green tick. */
+.stepper button.done .num { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+/* The next step is ready (e.g. the agent finished): it pulses to say "over here". */
+.stepper button.ready { color: var(--accent); animation: ready-pulse 1.6s ease-in-out infinite; }
+@keyframes ready-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent); }
+}
+/* Not reached yet: locked. */
+.stepper button:disabled { opacity: 0.4; }
+
+/* The status strip on steps 2 and 3: the server in one line. */
+.strip {
+  width: 100%; margin-top: 12px; padding: 10px 14px; text-align: left;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-left: 4px solid var(--ok); border-radius: 12px;
+  font-weight: 500; box-shadow: var(--shadow);
+}
+.strip.bad { border-left-color: var(--bad); }
+.strip.bad strong { color: var(--bad); }
+.strip.ok strong { color: var(--ok); }
+.strip:hover:not(:disabled) { transform: none; border-color: var(--accent); box-shadow: var(--shadow); }
+.strip-inner { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+.lights { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+.strip-text { flex: 1 1 260px; font-size: 0.9rem; }
+.strip-toggle { color: var(--accent); font-size: 0.85rem; font-weight: 650; white-space: nowrap; }
+/* One glowing light per container. */
+.light {
+  display: inline-block; width: 8px; height: 8px; margin-left: 4px; border-radius: 50%;
+  background: var(--ok); box-shadow: 0 0 8px var(--ok);
+}
+.light:first-child { margin-left: 0; }
+.light.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+.light.bad { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+
+/* "Start the investigation ->" and "Choose a fix ->": the way to the next step. */
+.next {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin-top: 16px; padding: 14px 16px; border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  animation: step-in 0.3s ease;
+}
+.next span { font-weight: 550; }
+
+#again { margin-top: 4px; }
+
+/* On a phone the tabs get small: number above a short label. */
+@media (max-width: 560px) {
+  .stepper button { flex-direction: column; gap: 3px; padding: 7px 2px; font-size: 0.72rem; }
+  .next button { width: 100%; }
+}
 
 /* ---------- Header ---------- */
 
-.top { max-width: 1100px; margin: 0 auto; padding: 24px 16px 8px; }
-.brand { display: flex; align-items: center; gap: 10px; font-size: 1.5rem; font-weight: 700; }
+/* The bar stays at the top while scrolling; things behind it are blurred. */
+.top-bar {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--bar-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.top-bar-inner {
+  max-width: 1100px; margin: 0 auto; padding: 10px 16px;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-size: 1.15rem; font-weight: 750; letter-spacing: -0.01em; }
 /* A small red-and-white ring, like a life buoy. */
 .logo {
   width: 22px; height: 22px; border-radius: 50%;
   border: 6px solid var(--bad);
-  box-shadow: inset 0 0 0 2px var(--panel);
+  box-shadow: inset 0 0 0 2px var(--panel), 0 0 12px rgba(248, 113, 113, 0.45);
 }
-.tagline { margin: 6px 0 0; color: var(--muted); max-width: 640px; }
+
+/* The sun/moon button: only one of the two icons shows, depending on the theme. */
+.icon-button {
+  display: inline-grid; place-items: center;
+  width: 38px; height: 38px; padding: 0;
+  border-radius: 10px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line);
+}
+.icon-button svg { width: 18px; height: 18px; }
+.icon-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); filter: none; }
+.icon-sun { display: none; }
+:root[data-theme="dark"] .icon-sun { display: block; }
+:root[data-theme="dark"] .icon-moon { display: none; }
+
+.hero { max-width: 1100px; margin: 0 auto; padding: 40px 16px 12px; }
+.hero h1 {
+  margin: 0; font-size: clamp(1.8rem, 5vw, 2.6rem); line-height: 1.15; letter-spacing: -0.02em;
+}
+/* The two key words in a blue-to-purple gradient. */
+.hero h1 .glow {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.tagline { margin: 12px 0 0; color: var(--muted); max-width: 660px; font-size: 1.05rem; }
+
+/* What it's built with, as small labels under the tagline. */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.78rem; font-weight: 600;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+}
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--chip, var(--accent)); }
+.chip.nvidia { --chip: #76b900; }
+.chip.nebius { --chip: var(--accent); }
+.chip.tavily { --chip: var(--accent-2); }
 
 /* ---------- Alert banner ---------- */
 
 .alert {
   margin: 0 0 16px;
   padding: 14px 16px;
-  border-radius: var(--radius);
+  border-radius: 10px;
   background: var(--bad-soft);
-  border-left: 5px solid var(--bad);
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
+  border-left: 4px solid var(--bad);
 }
 .alert strong { color: var(--bad); }
 /* After a fix that worked, the same banner turns green: the complaint is answered. */
-.alert.resolved { background: var(--ok-soft); border-left-color: var(--ok); }
+.alert.resolved {
+  background: var(--ok-soft);
+  border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+  border-left-color: var(--ok);
+}
 .alert.resolved strong { color: var(--ok); }
 
 /* ---------- Panels ---------- */
@@ -85,13 +271,15 @@ main { max-width: 1100px; margin: 0 auto; padding: 0 16px 48px; }
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 16px;
-  margin-top: 16px;
+  box-shadow: var(--shadow);
+  padding: 20px;
+  margin-top: 20px;
 }
-.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-h2 { margin: 0 0 12px; font-size: 1.15rem; }
-h3 { margin: 18px 0 8px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
-.muted { color: var(--muted); font-size: 0.85rem; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+h2 { margin: 0 0 8px; font-size: 1.2rem; letter-spacing: -0.01em; display: flex; align-items: center; }
+.panel-head h2 { margin-bottom: 0; }
+h3 { margin: 20px 0 8px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.muted { color: var(--muted); font-size: 0.875rem; }
 
 /* ---------- Container cards ---------- */
 
@@ -99,23 +287,29 @@ h3 { margin: 18px 0 8px; font-size: 0.85rem; text-transform: uppercase; letter-s
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
 
 .card {
+  background: var(--inset);
   border: 1px solid var(--line);
-  border-top: 4px solid var(--ok);
-  border-radius: var(--radius);
-  padding: 12px;
+  border-radius: 12px;
+  padding: 14px;
 }
-.card.warn { border-top-color: var(--warn); background: var(--warn-soft); }
-.card.bad { border-top-color: var(--bad); background: var(--bad-soft); }
+.card.warn { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-soft); }
+.card.bad { border-color: color-mix(in srgb, var(--bad) 45%, transparent); background: var(--bad-soft); }
 
-.card-title { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+.card-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 650; font-family: var(--mono); }
 .role { color: var(--muted); font-size: 0.85rem; }
-.image { font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem; color: var(--muted); margin-top: 6px; }
+.image { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); margin-top: 8px; }
 
-/* The small coloured label: Running / Restarting / Stopped. */
+/* The small coloured label: Running / Restarting / Stopped, with a glowing status light. */
 .badge {
-  font-size: 0.75rem; font-weight: 600;
-  padding: 2px 8px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 0.72rem; font-weight: 650;
+  padding: 2px 9px; border-radius: 999px;
   background: var(--ok-soft); color: var(--ok);
+}
+.badge::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor; box-shadow: 0 0 8px currentColor;
 }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.bad { background: var(--bad-soft); color: var(--bad); }
@@ -124,144 +318,167 @@ h3 { margin: 18px 0 8px; font-size: 0.85rem; text-transform: uppercase; letter-s
 
 /* ---------- Bars (memory, disk) ---------- */
 
-.bar { height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; margin-top: 4px; }
-.bar > span { display: block; height: 100%; background: var(--ok); }
-.bar.warn > span { background: var(--warn); }
-.bar.bad > span { background: var(--bad); }
+.bar { height: 6px; background: var(--line); border-radius: 999px; overflow: hidden; margin-top: 6px; }
+.bar > span { display: block; height: 100%; border-radius: 999px; background: var(--ok); box-shadow: 0 0 10px var(--ok); transition: width 0.6s ease; }
+.bar.warn > span { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+.bar.bad > span { background: var(--bad); box-shadow: 0 0 10px var(--bad); }
 
 /* ---------- Health checks, disks, jobs ---------- */
 
 /* Three columns on a laptop, stacked on a phone. */
-.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 24px; }
-.rows { display: grid; gap: 8px; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 28px; }
+.rows { display: grid; gap: 10px; }
 .row { font-size: 0.9rem; }
 .row-line { display: flex; justify-content: space-between; gap: 8px; }
-.ok-text { color: var(--ok); font-weight: 600; }
-.warn-text { color: var(--warn); font-weight: 600; }
-.bad-text { color: var(--bad); font-weight: 600; }
+.ok-text { color: var(--ok); font-weight: 650; }
+.warn-text { color: var(--warn); font-weight: 650; }
+.bad-text { color: var(--bad); font-weight: 650; }
 
 /* ---------- Step numbers in the headings ---------- */
 
 .step {
-  display: inline-grid; place-items: center;
-  width: 26px; height: 26px; margin-right: 6px;
-  border-radius: 50%;
-  background: var(--accent); color: #fff;
-  font-size: 0.9rem;
+  display: inline-grid; place-items: center; flex: none;
+  width: 28px; height: 28px; margin-right: 10px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  font-size: 0.9rem; font-weight: 750;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 /* ---------- Buttons and the custom fault box ---------- */
 
 button {
-  font: inherit; font-size: 0.9rem; font-weight: 600;
-  padding: 8px 14px;
+  font: inherit; font-size: 0.9rem; font-weight: 650;
+  padding: 9px 16px;
   border: 1px solid var(--accent);
-  border-radius: 8px;
-  background: var(--accent); color: #fff;
+  border-radius: 10px;
+  background: var(--accent); color: var(--on-accent);
   cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.2s, background-color 0.25s, border-color 0.25s, color 0.25s;
 }
+button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent); }
+button:active:not(:disabled) { transform: translateY(0); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button.secondary { background: transparent; color: var(--accent); }
-button:hover:not(:disabled) { filter: brightness(1.1); }
 /* Greyed out while it can't be used, e.g. while the server is already broken. */
-button:disabled { opacity: 0.45; cursor: not-allowed; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
-.buttons button { background: var(--panel); color: var(--text); border-color: var(--line); font-weight: 500; }
-.buttons button:hover:not(:disabled) { border-color: var(--accent); }
+.buttons button { background: var(--inset); color: var(--text); border-color: var(--line); font-weight: 550; }
+.buttons button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); box-shadow: none; }
 
 .custom { display: flex; gap: 8px; flex-wrap: wrap; }
 .custom input {
   flex: 1 1 260px;
-  font: inherit; padding: 8px 10px;
-  border: 1px solid var(--line); border-radius: 8px;
-  background: var(--panel); color: var(--text);
+  font: inherit; padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--inset); color: var(--text);
 }
+.custom input::placeholder { color: var(--muted); }
 
 /* ---------- Messages under the break panel ---------- */
 
-.message { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: var(--bg); }
-.message.bad { background: var(--bad-soft); color: var(--bad); }
-.message.ok { background: var(--ok-soft); color: var(--ok); }
+.message { margin-top: 14px; padding: 11px 14px; border-radius: 10px; background: var(--inset); border: 1px solid var(--line); }
+.message.bad { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 30%, transparent); }
+.message.ok { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
 
 /* ---------- Agent timeline ---------- */
 
-.timeline { list-style: none; margin: 14px 0 0; padding: 0 0 0 18px; border-left: 2px solid var(--line); }
+.timeline { list-style: none; margin: 18px 0 0; padding: 0 0 0 20px; border-left: 2px solid var(--line); }
 .timeline:empty { display: none; }
-.timeline li { position: relative; margin: 0 0 12px; padding-left: 12px; }
+.timeline li { position: relative; margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; }
+.timeline li:hover { background: var(--inset); }
 /* The dot on the line in front of each step. */
 .timeline li::before {
-  content: ""; position: absolute; left: -25px; top: 6px;
+  content: ""; position: absolute; left: -28px; top: 14px;
   width: 12px; height: 12px; border-radius: 50%;
   background: var(--panel); border: 2px solid var(--accent);
 }
-.timeline li.warn::before { border-color: var(--warn); background: var(--warn); }
-.timeline li.bad::before { border-color: var(--bad); background: var(--bad); }
-.timeline li.ok::before { border-color: var(--ok); background: var(--ok); }
+.timeline li.warn::before { border-color: var(--warn); background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+.timeline li.bad::before { border-color: var(--bad); background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+.timeline li.ok::before { border-color: var(--ok); background: var(--ok); box-shadow: 0 0 8px var(--ok); }
 
-.step-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-.step-time { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
-.step-title { font-weight: 600; }
-.code { font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
+.step-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.step-time { color: var(--muted); font-family: var(--mono); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.step-title { font-weight: 650; }
+.code { font-family: var(--mono); font-size: 0.84rem; overflow-wrap: anywhere; }
 
 /* Which Nemotron model did this step. */
-.model { font-size: 0.7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; color: #fff; }
-.model.nano { background: #76b900; }   /* NVIDIA green */
+.model { font-size: 0.68rem; font-weight: 750; letter-spacing: 0.03em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; color: #fff; }
+.model.nano { background: #5f9600; }   /* NVIDIA green, a bit darker so white text reads */
 .model.super { background: #2563eb; }
 .model.ultra { background: #7c3aed; }
-.model.code-check { background: var(--muted); }
+.model.code-check { background: #64748b; }
 
 /* Long tool outputs and reports fold away; click to open. */
-details { margin-top: 4px; }
-summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
+details { margin-top: 6px; }
+summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; width: fit-content; }
+summary:hover { color: var(--accent); }
 pre {
-  margin: 6px 0 0; padding: 10px; max-height: 320px; overflow: auto;
-  background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
-  font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem;
+  margin: 6px 0 0; padding: 12px; max-height: 320px; overflow: auto;
+  background: var(--inset); border: 1px solid var(--line); border-radius: 10px;
+  font-family: var(--mono); font-size: 0.8rem; line-height: 1.55;
   white-space: pre-wrap; word-break: break-word;
 }
 .step-text { margin-top: 4px; white-space: pre-wrap; }
 
-#investigate { margin-top: 4px; }
+#investigate { margin-top: 8px; }
 
 /* ---------- 3. You decide: option cards ---------- */
 
-.root-cause { padding: 12px 14px; border-radius: 8px; background: var(--bg); margin-bottom: 14px; }
+.root-cause { padding: 14px 16px; border-radius: 12px; background: var(--inset); border: 1px solid var(--line); margin-bottom: 16px; }
 .root-cause p { margin: 6px 0 0; }
 
-.options { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
-.option { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
-.option.recommended { border: 2px solid var(--accent); }
+.options { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.option {
+  background: var(--inset); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.option.recommended {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 8px 28px color-mix(in srgb, var(--accent) 18%, transparent);
+}
 .option.blocked { opacity: 0.6; border-style: dashed; }
-.option.chosen { border: 2px solid var(--ok); background: var(--ok-soft); }
+.option.chosen { border-color: var(--ok); background: var(--ok-soft); box-shadow: 0 0 0 1px var(--ok); }
 .option h4 { margin: 0; font-size: 1rem; }
 .option ul { margin: 0; padding-left: 18px; font-size: 0.9rem; }
 .option .pros li::marker { content: "✓  "; color: var(--ok); }
 .option .cons li::marker { content: "✗  "; color: var(--bad); }
 /* overflow-wrap: long file paths break onto the next line instead of running into the next card. */
-.option .steps { font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem; overflow-wrap: anywhere; }
-.option .label { font-size: 0.75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.option .steps { margin: 0; padding-left: 20px; font-family: var(--mono); font-size: 0.8rem; overflow-wrap: anywhere; }
+.option .label { font-size: 0.72rem; font-weight: 750; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
 .option button { margin-top: auto; }
 /* The second click: "Click again to apply" stands out so nobody applies a fix by accident. */
-button.armed { background: var(--warn); border-color: var(--warn); color: #fff; }
+button.armed { background: var(--warn); border-color: var(--warn); color: #1a1205; }
 
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.tag { font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--bg); color: var(--muted); }
-.tag.ok { background: var(--ok-soft); color: var(--ok); }
-.tag.warn { background: var(--warn-soft); color: var(--warn); }
-.tag.bad { background: var(--bad-soft); color: var(--bad); }
-.tag.accent { background: var(--accent); color: #fff; }
+.tag { font-size: 0.72rem; font-weight: 650; padding: 2px 9px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
+.tag.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.tag.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.tag.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+.tag.accent { background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #fff; border-color: transparent; }
 
-.decide-actions { margin-top: 12px; }
+.decide-actions { margin-top: 14px; }
 
 /* ---------- 4. Result ---------- */
 
-.verdict { font-size: 1.8rem; font-weight: 800; padding: 14px 16px; border-radius: var(--radius); }
-.verdict.ok { background: var(--ok-soft); color: var(--ok); }
-.verdict.warn { background: var(--warn-soft); color: var(--warn); }
-.verdict.bad { background: var(--bad-soft); color: var(--bad); }
-.verdict small { display: block; font-size: 0.9rem; font-weight: 500; color: var(--text); margin-top: 4px; }
+.verdict {
+  font-size: clamp(1.8rem, 6vw, 2.4rem); font-weight: 850; letter-spacing: -0.01em;
+  padding: 18px 20px; border-radius: 12px; border: 1px solid transparent;
+}
+.verdict.ok { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); text-shadow: 0 0 24px color-mix(in srgb, var(--ok) 45%, transparent); }
+.verdict.warn { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+.verdict.bad { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+.verdict small { display: block; font-size: 0.95rem; font-weight: 500; color: var(--text); margin-top: 6px; text-shadow: none; letter-spacing: 0; }
 .verdict-details pre { max-height: none; }
-.links { display: flex; gap: 16px; flex-wrap: wrap; }
+.links { display: flex; gap: 10px; flex-wrap: wrap; }
+/* The postmortem links look like buttons: they're the last thing a visitor does. */
+.links a {
+  padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--inset); text-decoration: none; font-weight: 600; font-size: 0.9rem;
+}
+.links a:hover { border-color: var(--accent); }
 a { color: var(--accent); }
 
 /* A small spinning circle next to "Building your fault...". */
@@ -271,3 +488,8 @@ a { color: var(--accent); }
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* People who asked their computer for less motion get no sliding or fading. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation-duration: 0.01ms !important; }
+}

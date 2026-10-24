@@ -40,6 +40,7 @@ const state = {
   building: false,  // Ultra is building a custom or random fault
   busy: false,      // a request from a button is on its way (stops double clicks)
   incident: null,   // the agent's run on this fault: null before "Start the investigation"
+  view: 1,          // which step is on screen: 1 Break, 2 Investigate, 3 Decide, 4 Result
 };
 
 
@@ -89,17 +90,16 @@ function levelFor(percent) {
   return "ok";
 }
 
+/** A container's status as a colour and a word: green Running, amber Restarting, red Stopped. */
+function containerState(c) {
+  if (c.status === "restarting") return { level: "warn", label: "Restarting" };
+  if (c.status === "exited") return { level: "bad", label: `Stopped (exit ${c.exit_code})` };
+  return { level: "ok", label: "Running" };
+}
+
 /** One container as a card: name, role, a status label, image, uptime, memory bar. */
 function containerCard(c) {
-  let level = "ok";
-  let label = "Running";
-  if (c.status === "restarting") {
-    level = "warn";
-    label = "Restarting";
-  } else if (c.status === "exited") {
-    level = "bad";
-    label = `Stopped (exit ${c.exit_code})`;
-  }
+  const { level, label } = containerState(c);
   const memoryPercent = Math.round((c.memory_mb / c.memory_limit_mb) * 100);
   const uptime = c.status === "running" ? `up ${timeSince(c.since)}` : `since ${timeSince(c.since)} ago`;
   const restarts = c.restarts ? `, ${c.restarts} restart${c.restarts === 1 ? "" : "s"}` : "";
@@ -141,14 +141,34 @@ function jobRow(j) {
   return `<div class="row row-line"><span>${escapeHtml(j.name)} <span class="muted">(${escapeHtml(j.schedule)})</span></span>${onOff}</div>`;
 }
 
+/**
+ * The small status strip on steps 2 and 3: one light per container and the alert in one line,
+ * so the server is never out of sight while the visitor watches the agent or picks a fix.
+ */
+function renderStrip(status, resolved) {
+  const lights = status.containers.map((c) => {
+    const { level, label } = containerState(c);
+    return `<span class="light ${level}" title="${escapeHtml(c.name)}: ${label}"></span>${escapeHtml(c.name)}`;
+  }).join(" ");
+  let text = "No complaints from customers.";
+  if (status.alert) text = `<strong>${resolved ? "Resolved:" : "Alert:"}</strong> ${escapeHtml(status.alert)}`;
+  const strip = document.getElementById("strip");
+  const open = document.getElementById("main").classList.contains("show-server");
+  strip.className = `strip view s2 s3 ${status.alert ? (resolved ? "ok" : "bad") : ""}`;
+  strip.innerHTML = `<span class="strip-inner"><span class="lights">${lights}</span>` +
+                    `<span class="strip-text">${text}</span>` +
+                    `<span class="strip-toggle">${open ? "Hide server ▴" : "Show server ▾"}</span></span>`;
+}
+
 /** Draw the whole dashboard from one GET /status answer. */
 function renderStatus(status) {
   const alertBox = document.getElementById("alert");
+  // The fault stays on the server until Reset, so the API keeps its alert. Once a fix
+  // worked, show it as resolved: a red banner over a fixed shop would tell the wrong story.
+  const verdict = state.incident && state.incident.verdict;
+  const resolved = verdict === "FIXED" || verdict === "FIXED FOR NOW";
+  renderStrip(status, resolved);
   if (status.alert) {
-    // The fault stays on the server until Reset, so the API keeps its alert. Once a fix
-    // worked, show it as resolved: a red banner over a fixed shop would tell the wrong story.
-    const verdict = state.incident && state.incident.verdict;
-    const resolved = verdict === "FIXED" || verdict === "FIXED FOR NOW";
     alertBox.className = resolved ? "alert resolved" : "alert";
     alertBox.innerHTML = `<strong>${resolved ? `Resolved (${escapeHtml(verdict)}):` : "Alert:"}</strong> ` +
                          escapeHtml(status.alert);
@@ -159,6 +179,7 @@ function renderStatus(status) {
   state.broken = Boolean(status.alert);
   updateBreakPanel();
   updateAgentPanel();
+  updateStepper();
   document.getElementById("containers").innerHTML = status.containers.map(containerCard).join("");
   document.getElementById("endpoints").innerHTML = status.endpoints.map(endpointRow).join("");
   document.getElementById("disks").innerHTML = status.disks.map(diskRow).join("");
@@ -187,14 +208,24 @@ function showBreakMessage(html, kind = "") {
   box.hidden = !html;
 }
 
-/** Grey out the break buttons whenever breaking isn't possible, and say why. Reset always works. */
+/**
+ * Grey out the break buttons whenever breaking isn't possible. Reset always works.
+ * Once the server is broken, show the way to step 2.
+ */
 function updateBreakPanel() {
   const canBreak = !state.broken && !state.building && !state.busy;
-  for (const button of document.querySelectorAll("#break-panel button:not(#reset)")) {
+  for (const button of document.querySelectorAll("#break-panel button:not(#reset):not(#go-investigate)")) {
     button.disabled = !canBreak;
   }
   document.getElementById("custom-idea").disabled = !canBreak;
   document.getElementById("reset").disabled = state.busy;
+  document.getElementById("again").disabled = state.busy;
+
+  document.getElementById("next-investigate").hidden = !state.broken;
+  // Before the investigation the button starts it; afterwards it just goes back to it.
+  document.getElementById("go-investigate").textContent =
+    state.incident ? "See the investigation →" : "Start the investigation →";
+  document.getElementById("go-investigate").disabled = state.busy;
 }
 
 /**
@@ -302,7 +333,9 @@ document.getElementById("random").addEventListener("click", () => {
   runAction(async () => startWatching(await api("POST", "/break/random")));
 });
 
-document.getElementById("reset").addEventListener("click", () => {
+/** A fresh healthy server, and back to step 1. Used by "Reset server" and "Try another fault". */
+function resetServer() {
+  goStep(1);
   runAction(async () => {
     stopWatching();
     clearAgent();
@@ -310,7 +343,10 @@ document.getElementById("reset").addEventListener("click", () => {
     document.getElementById("custom-idea").value = "";
     showBreakMessage("Fresh healthy server. Break it again!", "ok");
   });
-});
+}
+
+document.getElementById("reset").addEventListener("click", resetServer);
+document.getElementById("again").addEventListener("click", resetServer);
 
 
 // ---------- 2. The agent investigates ----------
@@ -346,9 +382,11 @@ function clearAgent() {
   document.getElementById("timeline").innerHTML = "";
   document.getElementById("agent-clock").textContent = "";
   showAgentMessage("");
+  document.getElementById("next-decide").hidden = true;
   document.getElementById("decide-panel").hidden = true;
   document.getElementById("result-panel").hidden = true;
   updateAgentPanel();
+  updateStepper();
 }
 
 /** One step's heading: time, which model (or our code) did it, and a title. */
@@ -457,12 +495,18 @@ function finishIncident(view) {
   state.incident = view;
   document.getElementById("agent-clock").textContent = view.cost || "";
   if (view.state === "failed") {
-    showAgentMessage(`The agent stopped with an error: ${escapeHtml(view.error)}. Reset and try again.`, "bad");
-  } else if (!view.decision) {
-    showAgentMessage("Done. Now choose a fix below.", "ok");
+    showAgentMessage(`The agent stopped. ${escapeHtml(view.error)} To run it again: Reset server, then break it again.`, "bad");
   }
+  // The way to the next step: choose a fix, or after a decision, see how it went.
+  const next = document.getElementById("next-decide");
+  next.hidden = view.state !== "done";
+  document.getElementById("next-decide-text").textContent = view.decision
+    ? "You already decided." : "Done. Ultra has fix options for you.";
+  document.getElementById("go-decide").textContent = view.decision ? "See the result →" : "Choose a fix →";
   updateAgentPanel();
+  updateBreakPanel();
   if (view.state === "done") renderDecision(view);
+  updateStepper();
 }
 
 /**
@@ -481,7 +525,9 @@ async function followIncident() {
   }
   state.incident = view;
   updateAgentPanel();
+  updateStepper();
   document.getElementById("timeline").innerHTML = "";
+  document.getElementById("next-decide").hidden = true;
   showAgentMessage("");
 
   if (view.state !== "running") {
@@ -513,11 +559,22 @@ async function followIncident() {
   };
 }
 
-document.getElementById("investigate").addEventListener("click", () => {
+/** Go to step 2 and start the agent there, so the visitor watches it from the first step. */
+function startInvestigation() {
+  goStep(2);
   runAction(async () => {
     await api("POST", "/investigate");
     await followIncident();
   }, showAgentMessage);
+}
+
+document.getElementById("investigate").addEventListener("click", startInvestigation);
+document.getElementById("go-investigate").addEventListener("click", () => {
+  if (state.incident) goStep(2);
+  else startInvestigation();
+});
+document.getElementById("go-decide").addEventListener("click", () => {
+  goStep(state.incident && state.incident.decision ? 4 : 3);
 });
 
 
@@ -629,7 +686,8 @@ function decide(number) {
     // The cards turn green right away, no need to wait for the next refresh. The server part of
     // this answer has no alert of its own (only /status adds it), so it's taken from the incident.
     renderStatus({ alert: view.alert, ...view.server });
-    document.getElementById("result-panel").scrollIntoView({ behavior: "smooth" });
+    finishIncident(view);  // the "next" button in step 2 now says "See the result"
+    goStep(4);
   }, showAgentMessage);
 }
 
@@ -657,14 +715,105 @@ function renderResult(view) {
 document.getElementById("reject").addEventListener("click", (event) => confirmThen(event.currentTarget, 0));
 
 
+// ---------- The four steps (tabs) ----------
+
+/** How far this visitor has got: a step can only be opened once everything before it is done. */
+function reachedStep() {
+  const incident = state.incident;
+  if (incident && incident.verdict) return 4;           // decided: the result is there
+  if (incident && incident.state === "done") return 3;  // the agent has fix options
+  if (incident || state.broken) return 2;               // broken: the agent can be called
+  return 1;
+}
+
+/**
+ * Draw the step tabs: done ones get a tick, the open one is highlighted, the next one glows
+ * when it's ready (e.g. the agent finished while the visitor watched), later ones are locked.
+ * If the visitor is on a step that's no longer possible (after Reset), go back.
+ */
+function updateStepper() {
+  const reached = reachedStep();
+  if (state.view > reached) goStep(reached);
+  for (const tab of document.querySelectorAll("#stepper button")) {
+    const step = Number(tab.dataset.step);
+    tab.disabled = step > reached;
+    tab.classList.toggle("active", step === state.view);
+    tab.classList.toggle("done", step < reached);
+    tab.classList.toggle("ready", step === reached && step > state.view);
+    tab.querySelector(".num").textContent = step < reached ? "✓" : step;
+  }
+}
+
+/** Show one step. The tab bar stays in sight, so the new step starts right under it. */
+function goStep(step) {
+  state.view = step;
+  const main = document.getElementById("main");
+  main.dataset.step = step;
+  main.classList.remove("show-server");  // the full server folds back into the strip
+  document.getElementById("strip").setAttribute("aria-expanded", "false");
+  const toggle = document.querySelector("#strip .strip-toggle");
+  if (toggle) toggle.textContent = "Show server ▾";
+  updateStepper();
+  const stepper = document.getElementById("stepper");
+  if (stepper.getBoundingClientRect().top < 0 || window.scrollY > stepper.offsetTop) {
+    window.scrollTo({ top: stepper.offsetTop - 70, behavior: "smooth" });
+  }
+}
+
+for (const tab of document.querySelectorAll("#stepper button")) {
+  tab.addEventListener("click", () => goStep(Number(tab.dataset.step)));
+}
+
+// The status strip: a click shows or hides the full server under it.
+document.getElementById("strip").addEventListener("click", (event) => {
+  const open = document.getElementById("main").classList.toggle("show-server");
+  event.currentTarget.setAttribute("aria-expanded", String(open));
+  event.currentTarget.querySelector(".strip-toggle").textContent = open ? "Hide server ▴" : "Show server ▾";
+});
+
+
+// ---------- Light / dark theme ----------
+
+/**
+ * The sun/moon button. index.html already picked the theme before the page was drawn;
+ * a click switches it and remembers the choice in this browser. Until the visitor clicks,
+ * the page follows the computer's own setting, even if that changes while the page is open.
+ */
+function setupThemeSwitch() {
+  const root = document.documentElement;
+  const button = document.getElementById("theme");
+  const label = () => {
+    const next = root.dataset.theme === "dark" ? "light" : "dark";
+    button.title = `Switch to the ${next} theme`;
+    button.setAttribute("aria-label", button.title);  // what a screen reader says for the icon
+  };
+  label();
+  button.addEventListener("click", () => {
+    root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    try { localStorage.setItem("theme", root.dataset.theme); } catch { /* private window: just not remembered */ }
+    label();
+  });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (event) => {
+    let saved = null;
+    try { saved = localStorage.getItem("theme"); } catch { /* nothing saved */ }
+    if (saved) return;  // the visitor chose one themselves: keep it
+    root.dataset.theme = event.matches ? "dark" : "light";
+    label();
+  });
+}
+
+
 // ---------- Start ----------
 
 /** When the page opens: buttons, the dashboard, and anything still going on from before a reload. */
 async function start() {
+  setupThemeSwitch();
   await loadPresets().catch((error) => showBreakMessage(escapeHtml(error.message), "bad"));
   // The incident first: the dashboard needs its verdict to show a fixed alert as resolved.
   await followIncident();
   await refresh();
+  // After a reload, open the furthest step this visitor has reached.
+  goStep(reachedStep());
   setInterval(refresh, REFRESH_EVERY);
   try {
     const build = await api("GET", "/break/status");
