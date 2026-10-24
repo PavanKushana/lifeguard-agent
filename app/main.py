@@ -70,7 +70,9 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-@app.get("/", include_in_schema=False)
+# GET and HEAD: HEAD is GET without the body, the light "are you there?" check monitoring robots use.
+# FastAPI's @app.get answers HEAD with 405, and UptimeRobot counted that as DOWN (25 Oct).
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 def home() -> FileResponse:
     """The web page. include_in_schema=False: it's a page for people, not an API endpoint, so /docs leaves it out."""
     return FileResponse(STATIC_DIR / "index.html")
@@ -153,9 +155,10 @@ def server_status(server: Server) -> dict:
     }
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health() -> dict:
-    """Say the API is up. Used to check the server started (and later by the host)."""
+    """Say the API is up. Checked by Render before each deploy goes live and by the uptime monitor
+    every 5 minutes (which may ask with HEAD, see home())."""
     return {"status": "ok"}
 
 
