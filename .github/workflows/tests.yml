@@ -13,12 +13,16 @@ on:
   pull_request:
   workflow_dispatch:   # adds a "Run workflow" button in the Actions tab, to run it by hand
 
+# ubuntu-24.04 instead of ubuntu-latest: "latest" moves to Ubuntu 26 from 19 Oct 2026. Like the pinned
+# packages, the machine stays the one the tests passed on, and we choose when to move.
+# checkout and setup-python v7: the current versions (24 Oct 2026), built on Node.js 24 (v4/v5 used
+# Node.js 20, which GitHub warned about).
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -28,9 +32,9 @@ jobs:
         run: python -m pytest -q
 
   docker:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build the image
         run: docker build -t lifeguard-agent .
       # No API keys here on purpose: the app must start without them (it only needs them for AI calls).

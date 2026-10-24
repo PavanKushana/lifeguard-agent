@@ -13,6 +13,14 @@ services:
     branch: main
     healthCheckPath: /health       # Render checks this before it switches visitors to a new version
     autoDeployTrigger: checksPass  # deploy only after the GitHub tests pass (.github/workflows/tests.yml)
+    # Redeploy only when something the running app uses changes. A deploy restarts the server and
+    # every visitor's session starts fresh, so a README or notes push must not do that (lesson 47).
+    buildFilter:
+      paths:
+        - app/**
+        - static/**
+        - Dockerfile
+        - requirements.txt
     envVars:
       - key: NEBIUS_API_KEY
         sync: false                # asked for once in the Render dashboard, never stored in git
