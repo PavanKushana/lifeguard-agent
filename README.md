@@ -25,7 +25,8 @@ first investigation for them and shows every step, so they can trust (or questio
 4. **Final call** (Nemotron Ultra): checks the investigator's report against the raw tool outputs,
    then gives the root cause and 2-3 fix options, each with steps, pros, cons and how to undo it.
 5. **Safety check** (plain Python, no AI): every option is checked before a human sees it.
-6. **Human approval**: you pick an option and confirm it. Nothing changes without that.
+6. **Human approval**: you pick an option and confirm it, on the web page or with two taps in Telegram.
+   Nothing changes without that.
 7. **Fix and verify**: the approved steps are applied, then the server is checked again:
    **FIXED**, **FIXED FOR NOW** (users are OK, but the cause is still there) or **NOT FIXED**.
    A fix only counts when the customers' own action works again, shown by the server's new log lines
@@ -41,6 +42,18 @@ first investigation for them and shows every step, so they can trust (or questio
 - **Result:** the verdict, the proof from the server's logs, and the postmortem to read or download.
 - One step on screen at a time, light and dark theme, and on phones a tab bar at the bottom like an app.
 
+## Phone alerts (Telegram)
+The agent can also page you on Telegram, like an on-call pager:
+- **Link once:** the page's "Get alerts on Telegram" button opens the bot on a phone; on a laptop it shows
+  a QR code to scan with the phone. The link code is random, works once and expires after 15 minutes.
+- **The shop breaks, the agent starts by itself:** your phone gets the customers' complaint, then the root
+  cause and the fix options, each with an Approve button.
+- **Approve with two taps** (Approve 2, then Yes, apply). This runs the same code as the web page,
+  including the safety check at the moment of approval.
+- **The result comes back:** the verdict with the proof from the server, and the postmortem as a file.
+  The page follows along, so after a tap on the phone the website shows the result too.
+- **Owner notes:** with `OWNER_CHAT_ID` set, the owner gets a short note whenever someone uses the demo.
+
 ## Safety
 - **The model can only ask.** It picks tools from a menu; my code decides what runs. All investigation
   tools are read-only.
@@ -52,6 +65,8 @@ first investigation for them and shows every step, so they can trust (or questio
   memory limits must fit into the server's memory; commands like `rm -rf` or `DROP TABLE` are blocked.
   Blocked options are shown with the reason.
 - **The check runs again at the moment of approval**, in case the server changed in between.
+- **Only the linked Telegram chat can approve** that visitor's fix, and buttons only work for the incident
+  they were sent for. Telegram's calls to the server carry a secret header, so nobody else can fake a tap.
 - **Guardrails in code** check the AI's work at every step and show up as "Guardrail" steps: the
   investigator must search the web before reporting, and every source link must come from a real search
   result (made-up links are removed).
@@ -72,7 +87,7 @@ first investigation for them and shows every step, so they can trust (or questio
 - [x] Web app with live updates, works on phones
 - [x] Docker image, tests on GitHub Actions on every push
 - [x] Live demo on [lifeguard-agent.com](https://lifeguard-agent.com) (Render, deploys only after the tests pass)
-- [ ] Phone alerts with Telegram
+- [x] Phone alerts with Telegram: alert, fix options and two-tap approval on the phone, QR code linking
 - [ ] Evaluation on 20 faults
 
 ## Try it
@@ -94,6 +109,10 @@ Running an incident needs 2 API keys:
 ```bash
 cp .env.example .env             # then put both keys in .env
 ```
+
+Phone alerts are optional: create a Telegram bot with [@BotFather](https://t.me/BotFather) and put its
+token in `.env` as `TELEGRAM_BOT_TOKEN`. On your own computer the bot fetches its messages from Telegram
+itself (long polling), so no public address is needed. Without a token the page hides the Telegram box.
 
 ### 1. The web app
 ```bash
@@ -129,7 +148,8 @@ write characters the Windows console can't print by default.
 ```bash
 python -m pytest -q
 ```
-The tests cover the parts without AI: safety checks, fixes, presets, the guard's rules, the spending limit.
+The tests cover the parts without AI: safety checks, fixes, presets, the guard's rules, the spending limit
+and the Telegram pager (with a fake Telegram, so no real messages are sent).
 GitHub runs them on every push, and also builds and starts the Docker image.
 
 ## What a run ends with
@@ -159,6 +179,8 @@ as a follow-up, next to the investigator's long-term fix (store backups on a sep
 ```
 app/
   main.py         the web API (FastAPI): sessions, live updates, decisions, postmortem
+  incidents.py    one path for the web page and Telegram: start the agent, decide, postmortem
+  telegram_bot.py the Telegram pager: alerts, fix buttons, linking, owner notes
   sessions.py     one simulated server per visitor
   simulator.py    the fake server: containers, disks, files, jobs, logs, health checks
   faults.py       ways to break it (as data), with the hidden truth and how to tell it's fixed
