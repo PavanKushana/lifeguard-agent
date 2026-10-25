@@ -23,7 +23,7 @@ first investigation for them and shows every step, so they can trust (or questio
    `docker stats`, `df -h`, `du`, `crontab -l` and `curl`, until the evidence is clear.
 3. **Web search** (Tavily): looks up the key error once, so the fix is backed by real sources.
 4. **Final call** (Nemotron Ultra): checks the investigator's report against the raw tool outputs,
-   then gives the root cause and 2-3 fix options, each with steps, pros, cons and how to undo it.
+   then gives the root cause and up to 3 fix options, each with steps, pros, cons and how to undo it.
 5. **Safety check** (plain Python, no AI): every option is checked before a human sees it.
 6. **Human approval**: you pick an option and confirm it, on the web page or with two taps in Telegram.
    Nothing changes without that.
@@ -62,7 +62,8 @@ The agent can also page you on Telegram, like an on-call pager:
   which can be undone.
 - **Every step of every option is checked in code**, for example: real containers, disks and jobs only;
   moved files must fit on the target disk; the database's own data folders can never be moved;
-  memory limits must fit into the server's memory; commands like `rm -rf` or `DROP TABLE` are blocked.
+  memory limits must fit into the server's memory; commands like `rm -rf` or `DROP TABLE` are blocked;
+  an option's name can't promise more than its steps do (a restart can't fix a password).
   Blocked options are shown with the reason.
 - **The check runs again at the moment of approval**, in case the server changed in between.
 - **Only the linked Telegram chat can approve** that visitor's fix, and buttons only work for the incident

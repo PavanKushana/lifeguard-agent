@@ -6,7 +6,7 @@ Ultra can only suggest fixes from a fixed menu of actions (ACTIONS below). A fix
 1-3 steps, each one action from the menu. Before any option is shown to a human,
 check_options() tests every step of every option: is it a real action,
 on a real container, disk or job, with sensible values, does a move fit on the target disk,
-and is there nothing that can destroy data?
+is there nothing that can destroy data, and does the title promise only what the steps can do?
 Options that fail are blocked, with the reason, so a human can see the guardrail working.
 
 The AI suggests, this file checks, a human approves. Nothing runs without all three.
@@ -66,6 +66,14 @@ FORBIDDEN = [
     r"\bpg_resetwal\b",
     r"\bmkfs\b",              # formats a disk
 ]
+
+# Changes no action on the menu can make: passwords, settings, packages, code, queries, job schedules.
+# A restart changes nothing about a container, so an option whose steps only restart can't keep a title
+# that promises one of these. 25 Oct: "Correct password and restart api" only restarted, the password
+# stayed wrong, and the visitor who picked it got NOT FIXED.
+CANT_CHANGE = re.compile(r"(?<![a-z])(passwords?|credentials?|secrets?|settings?|config\w*|install\w*|"
+                         r"packages?|dependenc\w*|librar\w*|code|patch\w*|quer(?:y|ies)|(?:re)?schedul\w*)"
+                         r"(?![a-z])", re.IGNORECASE)
 
 # Fields every option should have for the human to decide. Missing ones are filled in, not blocked.
 DISPLAY_DEFAULTS = {"pros": [], "cons": [], "undo": "not given", "reversible": False, "risk": "unknown"}
@@ -200,6 +208,12 @@ def check_steps(server: Server, title: str, steps) -> str | None:
         reason = f"contains a forbidden command ({pattern})" if pattern else check_action(server, step)
         if reason:
             return f"step {number}: {reason}"
+
+    # The human picks an option by its title, so the title must not promise more than the steps do.
+    promise = CANT_CHANGE.search(title)
+    if promise and all(step["type"] == "restart" for step in steps):
+        return (f"the title promises a change ({promise.group(0)}), but the steps only restart, and no action "
+                "can change passwords, settings, packages or code; that has to be done by hand")
     return None
 
 

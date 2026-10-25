@@ -75,6 +75,13 @@ def test_a_code_works_once_and_expires(sent):
     assert "doesn't work any more" in texts(sent)[-1]
 
 
+def test_start_without_a_code_says_what_the_bot_is(sent):
+    # Start pressed on the bot itself (found by search), not from the page: no "link doesn't work" message.
+    telegram_bot.handle_update({"message": {"chat": {"id": 121}, "text": "/start"}})
+    assert "I'm the Lifeguard-Agent pager" in texts(sent)[-1]
+    assert "doesn't work any more" not in texts(sent)[-1]
+
+
 def test_one_chat_follows_one_shop(sent):
     first, second = get_or_create(None), get_or_create(None)
     telegram_bot.link(first, 444)

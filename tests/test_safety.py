@@ -67,3 +67,21 @@ def test_rolling_back_the_api_is_allowed():
     """The api keeps no data, so rolling back a bad deploy is always possible."""
     step = {"type": "rollback", "container": "api", "to_image": "shopapp/api:2.3.1"}
     assert check_action(broken("bad_deploy"), step) is None
+
+
+def test_a_restart_cant_promise_a_password_or_package_change():
+    """25 Oct: "Correct password and restart api" only restarted, so the password stayed wrong (NOT FIXED)."""
+    restart_api = [{"type": "restart", "container": "api"}]
+    server = broken("wrong_db_password")
+    assert "only restart" in check_steps(server, "Correct password and restart api", restart_api)
+    assert "only restart" in check_steps(server, "Set DATABASE_PASSWORD and restart api", restart_api)
+    assert "only restart" in check_steps(broken("bad_deploy"), "Install pydantic_settings and restart api",
+                                         restart_api)
+
+
+def test_honest_titles_still_pass():
+    """A plain restart passes, and so does a rollback: it really brings the old setting back."""
+    assert check_steps(broken("cache_crashed"), "Restart cache", [{"type": "restart", "container": "cache"}]) is None
+    rollback = [{"type": "rollback", "container": "api", "to_image": "shopapp/api:2.3.1"}]
+    assert check_steps(broken("wrong_db_password"), "Roll back api to the version with the old password setting",
+                       rollback) is None

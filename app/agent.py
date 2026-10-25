@@ -205,15 +205,19 @@ tool outputs it collected.
 
 1. Check the report against the raw tool outputs. If the evidence points somewhere else, correct it.
    A full disk or high memory is WHAT is wrong; the root cause is what STARTED it.
-2. Give 2 or 3 different fix options a human can choose from. Each option has 1 to {MAX_STEPS} steps,
-   done in order, and every step is ONE of these actions:
+2. Give 2 or 3 different fix options a human can choose from, or only 1 if no other option can really
+   work. Each option has 1 to {MAX_STEPS} steps, done in order, and every step is ONE of these actions:
 {action_menu()}
+   These actions are all a fix can do: none of them changes a password, a setting, a package or the code.
+   - The title says only what the steps do (a restart is just a restart).
    - Work in this order: first end what users see, then stop it from coming back.
      If one action can't do both, put the steps together in one option
      (for example: free the space AND stop what filled it).
    - At least one option must remove the root cause (for example undo the change that started it).
-   - If a recent change caused it, also offer a way to KEEP that change and handle its effect,
-     with honest cons. The owner may need the new feature.
+   - If a recent change caused it, also offer a way to KEEP that change and handle its effect, with
+     honest cons, but only if the actions can do it (for example a bigger memory limit). The owner may
+     need the new feature. If keeping it needs a change by hand (like setting a missing password), don't
+     make that an option: say in why_recommended what to change by hand before trying the new version again.
    - Never suggest deleting anything. Move files instead.
    - db and cache hold data: an older version may not read the files a newer one wrote. Only roll
      them back to undo an upgrade from the last day. A single crash after days of running fine is
@@ -325,7 +329,7 @@ def ask_final_call(messages: list, usage: Usage, on_step) -> tuple[dict | None, 
 
 
 def final_call(server: Server, alert: str, report: str, evidence: list, usage: Usage, on_step) -> dict | None:
-    """Ask Ultra for the final root cause and 2-3 fix options, then let safety.py check every option.
+    """Ask Ultra for the final root cause and up to 3 fix options, then let safety.py check every option.
 
     If safety blocks every option, Ultra hears why and gets one chance to offer safe ones.
     Returns the final call as a dict (with only safe options), or None if Ultra's reply can't be read.
@@ -357,7 +361,7 @@ def final_call(server: Server, alert: str, report: str, evidence: list, usage: U
         messages.append({"role": "assistant", "content": text})
         messages.append({"role": "user", "content": "The safety check blocked every option:\n"
                          + "\n".join(f"- {item['title']}: {item['reason']}" for item in blocked)
-                         + "\nGive the final call again with 2 or 3 options that avoid these. If no safe action "
+                         + "\nGive the final call again with options that avoid these. If no safe action "
                            "removes the root cause, offer the safe actions that help most, with honest cons. "
                            "Reply with ONLY the complete JSON object in the format given."})
         retry, _ = ask_final_call(messages, usage, on_step)

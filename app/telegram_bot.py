@@ -355,10 +355,17 @@ def handle_message(message: dict) -> None:
     chat_id = message["chat"]["id"]
     text = (message.get("text") or "").strip()
     how_to_link = f"Open {e(page_url())} and tap \"Get alerts on Telegram\"."
+    about = ("I'm the Lifeguard-Agent pager: I message you when your demo shop breaks and let you "
+             f"approve the fix here. To link this chat: {how_to_link}")
 
     if text.startswith("/start"):
         code = text[len("/start"):].strip()
-        session = find(lambda s: s.telegram_code == code) if code else None
+        if not code:
+            # Start pressed on the bot itself (found by search), not from the page's link: there was
+            # no link, so "this link doesn't work any more" would be confusing. Say what the bot is.
+            send(chat_id, about)
+            return
+        session = find(lambda s: s.telegram_code == code)
         if session and session.telegram_code_until and datetime.now() <= session.telegram_code_until:
             link(session, chat_id)
             send(chat_id, "✅ <b>Linked!</b> This chat now gets the alerts for your Lifeguard-Agent demo shop.\n\n"
@@ -379,8 +386,7 @@ def handle_message(message: dict) -> None:
         send(chat_id, f"This chat's id: <code>{chat_id}</code>")
         return
 
-    send(chat_id, "I'm the Lifeguard-Agent pager: I message you when your demo shop breaks and let you "
-                  f"approve the fix here. To link this chat: {how_to_link}")
+    send(chat_id, about)
 
 
 def handle_button(query: dict) -> None:
