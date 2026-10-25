@@ -113,6 +113,22 @@
       <p class="muted">Pick a problem, or describe one in your own words.
         The agent won't know what you picked. Like a real on-call engineer, it only gets the customers' complaint.</p>
 
+      <!-- Telegram: the 3 a.m. alert on the phone. Shown only when the server has a bot; app.js fills the words. -->
+      <div id="telegram-box" class="telegram" hidden>
+        <span id="telegram-text"></span>
+        <button type="button" id="telegram-button" class="secondary">Get alerts on Telegram</button>
+        <!-- On a laptop: a QR code to scan with the phone, and the two other ways to link. -->
+        <div id="telegram-qr" class="telegram-qr" hidden>
+          <div id="telegram-qr-image" class="qr"></div>
+          <div class="telegram-ways">
+            <strong>Scan this with your phone camera.</strong> Telegram opens the bot: press <strong>Start</strong>.
+            <p class="muted">Telegram on this computer? <a id="telegram-open" href="#" target="_blank" rel="noopener">Open it here</a>.
+              Or send <code id="telegram-start"></code> to <span id="telegram-bot"></span>.
+              The code works once, for 15 minutes.</p>
+          </div>
+        </div>
+      </div>
+
       <h3>Common problems</h3>
       <!-- app.js puts one button per preset in here (from GET /presets). -->
       <div id="presets" class="buttons"></div>

@@ -35,6 +35,8 @@ class Incident:
 
     alert: str
     started: datetime = field(default_factory=datetime.now)
+    # A short random name, so a Telegram button made for this incident can't act on a later one.
+    id: str = field(default_factory=lambda: secrets.token_hex(4))
     # "running" while the agent works, then "done" (results are in) or "failed" (an error stopped it).
     state: str = "running"
     # Each step is {"kind": "triage" / "tool_call" / ..., "text": ..., "at": "10:47:34"}, oldest first.
@@ -98,6 +100,14 @@ class Session:
     build: FaultBuild | None = None
     # The agent's run on this fault. None until the visitor starts the investigation.
     incident: Incident | None = None
+    # Telegram (Day 10): the chat that gets this visitor's alerts and may approve their fixes, and a
+    # one-time code to link it (random, used once, expires). A reset keeps the link.
+    telegram_chat_id: int | None = None
+    telegram_code: str | None = None
+    telegram_code_until: datetime | None = None
+    # The visitor's address from their last request: an investigation that starts by itself
+    # (Telegram linked) still counts against that visitor's spending limit.
+    last_ip: str = "unknown"
 
     def reset(self) -> None:
         """Throw the broken server away and start again with a healthy one."""
@@ -124,6 +134,18 @@ def _clean_up(now: datetime) -> None:
     while len(_sessions) >= MAX_SESSIONS:
         oldest = min(_sessions.values(), key=lambda s: s.last_used)
         del _sessions[oldest.id]
+
+
+def find_all(match) -> list[Session]:
+    """Every session for which match(session) is true, e.g. the ones linked to a Telegram chat."""
+    with _lock:
+        return [session for session in _sessions.values() if match(session)]
+
+
+def find(match) -> Session | None:
+    """The first session for which match(session) is true, or None."""
+    found = find_all(match)
+    return found[0] if found else None
 
 
 def get_or_create(session_id: str | None) -> Session:

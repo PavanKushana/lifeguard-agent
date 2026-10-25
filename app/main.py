@@ -7,14 +7,16 @@ Then open http://127.0.0.1:8000 for the web page (files in static/),
 or http://127.0.0.1:8000/docs to try every endpoint by hand.
 
 This file only receives requests and sends answers. The real work stays in the
-other files (simulator, agent, approval, fixes), so the terminal and the web page
-run exactly the same code.
+other files (simulator, agent, incidents, fixes), so the terminal, the web page and
+the Telegram bot run exactly the same code.
 """
 
 import asyncio
 import json
 import logging
+import secrets
 import threading
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
@@ -24,15 +26,14 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app.agent import format_step, handle_incident
-from app.approval import approve_option
+from app import telegram_bot
 from app.fault_maker import make_fault, random_idea
 from app.faults import PRESETS, apply_fault
-from app.fixes import apply_fix, verify
 from app.guard import check_fault_text
+from app.incidents import (IncidentError, check_can_investigate, decide_incident, final_call_view, outcome,
+                           postmortem as write_postmortem, proof_lines, start_investigation)
 from app.limits import try_start_ai_run
 from app.llm import Usage, describe_error
-from app.postmortem import build_postmortem
 from app.sessions import COOKIE_NAME, IDLE_LIMIT, FaultBuild, Incident, Session, get_or_create
 from app.simulator import Server
 
@@ -41,8 +42,6 @@ from app.simulator import Server
 # faults.py shows up here by itself, nothing to change in this file.
 PresetId = Enum("PresetId", {preset_id: preset_id for preset_id in PRESETS}, type=str)
 
-# Only one decision at a time: a double click on "Approve" must not apply the same fix twice.
-decide_lock = threading.Lock()
 # The live stream looks for new steps this often (seconds), and gives up after this long
 # (the agent takes under a minute; a stream nobody closes must not stay open forever).
 STREAM_EVERY = 0.5
@@ -59,9 +58,18 @@ class CustomIdea(BaseModel):
 
     idea: str = Field(examples=["the cache runs out of memory and gets killed"])
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Runs when the server starts: connect the Telegram bot (webhook live, polling on a laptop)."""
+    telegram_bot.start()
+    yield
+
+
 app = FastAPI(
     title="Lifeguard-Agent",
     description="AI SRE for small teams on one Docker host.",
+    lifespan=lifespan,
 )
 
 # The web page's files (HTML, CSS, JavaScript). Found from this file's own place, not from the
@@ -85,6 +93,8 @@ def current_session(request: Request, response: Response) -> Session:
     so the cookie logic lives in one place.
     """
     session = get_or_create(request.cookies.get(COOKIE_NAME))
+    # Remembered for an investigation that starts by itself later (Telegram linked): it counts too.
+    session.last_ip = visitor_ip(request)
     # httponly: page scripts can't read the id. samesite=lax: other sites can't send requests with it.
     response.set_cookie(COOKIE_NAME, session.id, max_age=int(IDLE_LIMIT.total_seconds()),
                         httponly=True, samesite="lax")
@@ -167,7 +177,13 @@ def status(session: Session = Depends(current_session)) -> dict:
     """Show the visitor's own server: healthy at first, broken after a fault, repaired after a fix."""
     # Only the alert, like a real on-call person gets: what users see, not why it happens.
     alert = session.fault["alert"] if session.fault else None
+    incident = session.incident
     return {"session_started": iso(session.created), "alert": alert,
+            # So the page notices what it didn't start itself: the agent starting on its own
+            # (Telegram linked) or a fix decided on the phone.
+            "incident": {"id": incident.id, "state": incident.state, "decided": incident.verification is not None}
+                        if incident else None,
+            "telegram": {"available": telegram_bot.enabled(), "linked": session.telegram_chat_id is not None},
             **server_status(session.server)}
 
 
@@ -190,7 +206,26 @@ def break_preset(preset_id: PresetId, session: Session = Depends(current_session
         session.fault_name = preset_id
         session.build = None  # an old failed build has nothing to say about this fault
         apply_fault(session.server, session.fault)
+    after_break(session)
     return {"alert": session.fault["alert"], **server_status(session.server)}
+
+
+def after_break(session: Session) -> None:
+    """The 3 a.m. flow: if the visitor linked Telegram, the agent starts by itself and the phone buzzes.
+
+    Without Telegram nothing happens here: the visitor starts the agent on the page.
+    The investigation still counts against the visitor's spending limit; if that's reached, the
+    phone gets the alert with the reason instead.
+    """
+    if session.telegram_chat_id is None:
+        return
+    refused = try_start_ai_run(session.last_ip)
+    telegram_bot.send_alert(session, refused)
+    if refused is None:
+        try:
+            start_investigation(session)
+        except IncidentError:
+            pass  # started a moment ago from the page: one investigation is enough
 
 
 def check_can_break(session: Session) -> None:
@@ -258,6 +293,7 @@ def build_fault(session: Session, build: FaultBuild, idea: str, usage: Usage) ->
         apply_fault(session.server, fault)
         build.state = "ready"
         build.message = "Your server is broken now. Read the alert, then POST /investigate."
+    after_break(session)  # outside the lock: it may start the agent, which takes a while to set up
 
 
 def start_build(session: Session, kind: str, idea: str, usage: Usage) -> dict:
@@ -318,62 +354,9 @@ def reset(session: Session = Depends(current_session)) -> dict:
     return {"alert": None, **server_status(session.server)}
 
 
-def run_agent(server: Server, incident: Incident) -> None:
-    """Run the whole agent (triage, investigation, final call) and store the results. Runs in the background.
-
-    Any error is caught and recorded, so the page can show "failed" instead of waiting forever.
-    """
-    try:
-        incident.result = handle_incident(server, incident.alert, incident.add_step)
-        incident.state = "done"
-    except Exception as error:  # e.g. Token Factory busy or down, or a missing API key
-        log.exception("The agent stopped with an error")
-        incident.error = describe_error(error)
-        incident.state = "failed"
-
-
-def final_call_view(final: dict) -> dict:
-    """Ultra's fix options as separate fields, so a human can read them before POST /decide.
-
-    The same facts as the "final_call" step, but that step is one long text for the timeline.
-    Here every option has its own number, steps, pros, cons and risk: readable in /docs now,
-    and the web page (Day 8) turns them into option cards with an Approve button.
-    """
-    options = [{"number": number,
-                "title": option.get("title"),
-                "recommended": bool(option.get("recommended")),
-                "steps": [format_step(step) for step in option["steps"]],
-                "pros": option["pros"],
-                "cons": option["cons"],
-                "undo": option["undo"],
-                "can_be_undone": option["reversible"],
-                "risk": option["risk"]}
-               for number, option in enumerate(final["options"], start=1)]
-
-    if any(option["recommended"] for option in options):
-        why = final.get("why_recommended")
-    else:
-        # Same rule as the terminal: don't show praise for an option safety took away.
-        why = ("Ultra's recommended option was blocked by the safety check, so none of these is "
-               "recommended. Compare the cons before picking.")
-    if options:
-        # Same as the terminal's question: "1" alone reads better than "from 1 to 1".
-        choices = "1" if len(options) == 1 else f"a number from 1 to {len(options)}"
-        how_to_decide = f"POST /decide/{{option}} with {choices} to approve that option, or 0 to reject them all."
-    else:
-        how_to_decide = "No safe option is left. POST /decide/0 to reject, and fix it by hand."
-
-    return {"root_cause": final.get("root_cause"),
-            "confidence": final.get("confidence"),
-            "options": options,
-            "why_recommended": why,
-            "blocked": final.get("blocked", []),  # each one {"title", "reason"}: the human sees what safety stopped
-            "how_to_decide": how_to_decide}
-
-
 def incident_view(incident: Incident) -> dict:
     """The incident as JSON for the page: state, timeline so far, and at the end the cost and fix options."""
-    view = {"state": incident.state, "alert": incident.alert,
+    view = {"id": incident.id, "state": incident.state, "alert": incident.alert,
             "started": iso(incident.started),
             "steps": incident.steps, "error": incident.error}
     if incident.result:
@@ -386,8 +369,10 @@ def incident_view(incident: Incident) -> dict:
         view["decision"] = incident.decision["note"]
         view["verdict"] = incident.verification["verdict"]
         view["proof"] = incident.proof
-        # The checks behind the verdict, so the page can say in words what works again, what's
-        # still wrong (FIXED FOR NOW) and what to watch (e.g. another disk nearly full now).
+        # The same words Telegram uses, made once in incidents.py: what works again, what's still
+        # wrong (FIXED FOR NOW), what to watch, and the proof lines in plain words.
+        view["outcome"] = outcome(incident)
+        view["proof_lines"] = proof_lines(incident.proof)
         view["checks"] = {key: incident.verification[key] for key in ("users_ok", "stays_fixed", "warnings")}
     return view
 
@@ -400,17 +385,12 @@ def investigate(request: Request, session: Session = Depends(current_session)) -
     starts it, and the page follows the steps with GET /incident.
     Counts as one AI run for the spending limit (429 when it's reached).
     """
-    if session.fault is None:
-        if session.build is not None and session.build.state == "building":
-            raise HTTPException(409, "Your fault is still being built. Wait until GET /break/status says ready.")
-        raise HTTPException(409, "Nothing is broken yet. Break the server first.")
-    if session.incident is not None:
-        raise HTTPException(409, "The agent already ran on this fault. Call POST /reset to start again.")
-    check_spending(request)
-    session.incident = Incident(alert=session.fault["alert"])
-    # daemon=True: if the API stops, it doesn't wait for a half-finished agent.
-    threading.Thread(target=run_agent, args=(session.server, session.incident), daemon=True).start()
-    return incident_view(session.incident)
+    try:
+        check_can_investigate(session)  # first, so an impossible request doesn't use a spending place
+        check_spending(request)
+        return incident_view(start_investigation(session))
+    except IncidentError as error:
+        raise HTTPException(error.status, error.message)
 
 
 @app.get("/incident")
@@ -474,40 +454,12 @@ def decide(option: int, session: Session = Depends(current_session)) -> dict:
     An approved fix is applied to the visitor's server and checked right away, like in the terminal:
     FIXED, FIXED FOR NOW or NOT FIXED. A rejection gets a verdict too (nothing changed, so NOT FIXED).
     """
+    # The same code as a decision from Telegram (incidents.decide_incident): one approval path.
+    try:
+        result = decide_incident(session, option, approved_by="web visitor")
+    except IncidentError as error:
+        raise HTTPException(error.status, error.message)
     incident = session.incident
-    # Two different situations, two different answers: "wait" would be wrong advice when nothing is running.
-    if incident is None:
-        raise HTTPException(409, "No investigation on this server. Break it and POST /investigate first.")
-    if incident.state != "done":
-        raise HTTPException(409, "There are no fix options yet. Wait until GET /incident says done.")
-    final = incident.result["final"]
-    options = final.get("options", []) if final else []
-    if not 0 <= option <= len(options):
-        raise HTTPException(400, f"There is no option {option}. Choose 1 to {len(options)}, or 0 to reject all.")
-
-    with decide_lock:
-        if incident.decision is not None:
-            raise HTTPException(409, "A decision was already made for this incident. Call POST /reset to start again.")
-        # The same function the terminal uses: it runs the safety check again before approving.
-        incident.decision = approve_option(session.server, final, option, approved_by="web visitor")
-        incident.done = apply_fix(session.server, incident.decision)
-
-    if incident.done:
-        incident.add_step("apply", "\n".join(f"{number}. {line}" for number, line in enumerate(incident.done, 1)))
-    incident.verification = verify(session.server, session.fault)
-    result = incident.verification
-    if result["verdict"] != "NOT FIXED":
-        # The proof that customers are OK: the log lines the server writes once it has recovered
-        # (the fault's "recovery", e.g. "INFO POST /api/orders 201": an order went through again).
-        # A real on-call engineer checks the same way: not "it looks fine", but "orders succeed again".
-        recovery_logs = session.fault.get("recovery", {}).get("logs", {})
-        incident.proof = [f"{container}: {text}" for container, lines in recovery_logs.items() for _, text in lines]
-    lines = [result["verdict"], f"Decision: {incident.decision['note']}", "", "Users OK?"]
-    lines += [f"  {line}" for line in result["users_ok"]] + ["Stays fixed?"]
-    lines += [f"  {line}" for line in result["stays_fixed"]]
-    if result["warnings"]:
-        lines += ["Watch out:"] + [f"  {line}" for line in result["warnings"]]
-    incident.add_step("verdict", "\n".join(lines))
     # The answer first: after deciding, "did it work?" matters most, and it was hidden below ~30 steps.
     # The whole incident follows (its own "verdict"/"decision" keys keep these first places).
     return {"verdict": result["verdict"], "decision": incident.decision["note"],
@@ -521,16 +473,51 @@ def postmortem(session: Session = Depends(current_session)) -> PlainTextResponse
     Only after POST /decide, because the decision and the verdict are part of the story.
     Built by the same code as the terminal's postmortem, from what was recorded, so it costs no tokens.
     """
-    incident = session.incident
-    if incident is None or incident.decision is None:
-        raise HTTPException(409, "No decision yet. Run the incident and POST /decide first.")
-    if incident.verification is None:  # the fix is applied but the check is still running (a split second)
-        raise HTTPException(409, "The fix is still being checked. Try again in a moment.")
-
-    text = build_postmortem({**incident.result, "alert": incident.alert, "started": incident.started,
-                             "times": incident.times, "decision": incident.decision, "done": incident.done,
-                             "verification": incident.verification})
+    try:
+        text, filename = write_postmortem(session)  # the same report Telegram sends as a file
+    except IncidentError as error:
+        raise HTTPException(error.status, error.message)
     # "inline" shows the text in /docs and in the browser; the filename is used if someone saves it.
-    filename = f"{incident.started:%Y-%m-%d_%H%M}_{session.fault_name}.md"
     return PlainTextResponse(text, media_type="text/markdown; charset=utf-8",
                              headers={"Content-Disposition": f'inline; filename="{filename}"'})
+
+
+# ---------- Telegram (Day 10) ----------
+
+@app.post("/telegram/link")
+def telegram_link(session: Session = Depends(current_session)) -> dict:
+    """A one-time link that opens our bot; pressing Start in Telegram links that chat to this visitor's shop.
+
+    Then the shop breaking starts the agent by itself, and the phone gets the alert and the fix buttons.
+    """
+    if not telegram_bot.enabled() or telegram_bot.bot_username() is None:
+        raise HTTPException(404, "Telegram alerts aren't set up on this server.")
+    code = telegram_bot.new_link_code(session)
+    url = telegram_bot.link_url(code)
+    # Three ways to use it: open the link (Telegram on this device), scan the QR code with a phone,
+    # or send "/start <code>" to the bot by hand.
+    return {"url": url, "qr_svg": telegram_bot.qr_svg(url), "code": code, "bot": telegram_bot.bot_username(),
+            "linked": session.telegram_chat_id is not None}
+
+
+@app.post("/telegram/unlink")
+def telegram_unlink(session: Session = Depends(current_session)) -> dict:
+    """Stop sending this visitor's alerts to Telegram."""
+    session.telegram_chat_id = None
+    return {"linked": False}
+
+
+@app.post("/telegram/webhook", include_in_schema=False)
+async def telegram_webhook(request: Request) -> dict:
+    """Live mode: Telegram calls this with every message and button tap for our bot.
+
+    Only Telegram knows the secret header (we gave it in setWebhook), so fake calls are refused.
+    The work runs in the background: Telegram only needs a quick "got it".
+    """
+    secret = request.headers.get("x-telegram-bot-api-secret-token", "")
+    # compare_digest: takes the same time for every wrong guess, so the secret can't be guessed bit by bit.
+    if not telegram_bot.enabled() or not secrets.compare_digest(secret, telegram_bot.webhook_secret()):
+        raise HTTPException(403, "Not from Telegram.")
+    update = await request.json()
+    threading.Thread(target=telegram_bot.handle_update, args=(update,), daemon=True).start()
+    return {"ok": True}

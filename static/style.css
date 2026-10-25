@@ -177,6 +177,26 @@ main[data-step="4"] .strip { order: -2; }
 
 #again { margin-top: 4px; }
 
+/* The Telegram box in step 1: the 3 a.m. alert on the phone. */
+.telegram {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin: 12px 0 4px; padding: 12px 14px; border-radius: 12px;
+  background: var(--inset); border: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+.telegram > span { flex: 1 1 300px; }
+/* The QR code row takes the whole width under the text and the button. */
+.telegram-qr { flex: 1 1 100%; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-top: 6px; }
+/* Always dark on white, also in dark mode: phone cameras read a QR code best that way. The white card
+   sits around the picture, so its round corners never cut into the code. */
+.qr { background: #fff; border-radius: 8px; padding: 6px; }
+/* The picture only has a viewBox (no fixed size), so it shrinks to this size instead of being cut off.
+   crispEdges keeps the squares sharp, without thin grey lines between them. */
+.qr svg { display: block; width: 180px; height: 180px; shape-rendering: crispEdges; }
+.telegram-ways { flex: 1 1 260px; }
+.telegram-ways p { margin: 6px 0 0; }
+.telegram-ways code { font-family: var(--mono); font-size: 0.8rem; overflow-wrap: anywhere; }
+
 /* ---------- Phone: the step tabs become a tab bar at the bottom, like an app ---------- */
 
 /* The icons only show on a phone; on a laptop the tabs keep their numbers. */

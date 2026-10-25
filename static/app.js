@@ -41,6 +41,8 @@ const state = {
   busy: false,      // a request from a button is on its way (stops double clicks)
   incident: null,   // the agent's run on this fault: null before "Start the investigation"
   sessionStarted: null,  // when the server made this visitor's session: a new value = a new session
+  telegramLinked: false,   // this visitor's Telegram gets the alerts (from GET /status)
+  telegramWaiting: false,  // Telegram was opened from the page, waiting for the visitor to press Start
   view: 1,          // which step is on screen: 1 Break, 2 Investigate, 3 Decide, 4 Result
   focus: null,      // the part the agent is checking right now (e.g. "api"), lit up on the map
 };
@@ -334,6 +336,81 @@ function noticeNewSession(started) {
                    "so here is a fresh, healthy shop. Pick a problem to start again.");
 }
 
+/**
+ * Notice an incident the page didn't start or decide itself: the agent starting on its own
+ * (Telegram linked), or a fix approved on the phone. Then load it and show the step that fits,
+ * so the website turns green when the fix is approved in Telegram.
+ */
+function followServerIncident(summary) {
+  if (!summary || state.busy) return;  // busy: the page's own request is on its way and will draw it
+  const known = state.incident;
+  const isNew = !known || known.id !== summary.id;
+  const decidedElsewhere = summary.decided && known && !known.verdict;
+  if (!isNew && !decidedElsewhere) return;
+  followIncident().then(() => {
+    if (summary.decided) goStep(4);
+    else if (isNew) goStep(2);
+    // Redraw the banner and the map now that the decision is known (they were drawn just before it).
+    refresh();
+  });
+}
+
+/** The "Get alerts on Telegram" box in step 1. Hidden when this server has no bot. */
+function renderTelegram(info) {
+  const box = document.getElementById("telegram-box");
+  box.hidden = !info || !info.available;
+  if (box.hidden) return;
+  state.telegramLinked = info.linked;
+  if (info.linked) state.telegramWaiting = false;
+  let text = "<strong>📱 Get the 3 a.m. alert on your phone.</strong> Link Telegram: when the shop breaks, " +
+             "the agent starts by itself and messages you the fixes to approve with a tap.";
+  if (info.linked) {
+    text = "<strong>📱 Telegram linked.</strong> When the shop breaks, the agent starts by itself and your " +
+           "phone gets the cause and the fix buttons.";
+  } else if (state.telegramWaiting) {
+    text = PHONE.matches
+      ? "<strong>📱 Telegram is opening.</strong> Press <strong>Start</strong> there to link this page."
+      : "<strong>📱 Scan the QR code with your phone</strong>, then press <strong>Start</strong> in Telegram.";
+  }
+  document.getElementById("telegram-text").innerHTML = text;
+  document.getElementById("telegram-button").textContent = info.linked ? "Stop alerts" : "Get alerts on Telegram";
+  if (info.linked) document.getElementById("telegram-qr").hidden = true;  // done: the QR code isn't needed any more
+}
+
+/** The QR code (an SVG picture made by our server) and the two other ways to link. */
+function showTelegramQr(link) {
+  document.getElementById("telegram-qr-image").innerHTML = link.qr_svg;
+  document.getElementById("telegram-open").href = link.url;
+  document.getElementById("telegram-start").textContent = `/start ${link.code}`;
+  document.getElementById("telegram-bot").textContent = `@${link.bot}`;
+  document.getElementById("telegram-qr").hidden = false;
+}
+
+document.getElementById("telegram-button").addEventListener("click", async () => {
+  if (state.telegramLinked) {
+    runAction(async () => { await api("POST", "/telegram/unlink"); });
+    return;
+  }
+  // On a phone, Telegram is right here: open it at once. The tab opens inside the click, because
+  // browsers block a tab that a script opens later. On a laptop most people have Telegram only on
+  // their phone (like Pavan on 25 Oct), so show a QR code to scan instead.
+  const tab = PHONE.matches ? window.open("", "_blank") : null;
+  try {
+    const link = await api("POST", "/telegram/link");
+    state.telegramWaiting = true;
+    if (PHONE.matches) {
+      if (tab) tab.location = link.url;
+      else window.location.href = link.url;  // the browser blocked the tab: open Telegram here instead
+    } else {
+      showTelegramQr(link);
+    }
+    renderTelegram({ available: true, linked: false });
+  } catch (error) {
+    if (tab) tab.close();
+    showBreakMessage(escapeHtml(error.message), "bad");
+  }
+});
+
 /** Ask for the latest server state and redraw. Shows a short note if the API can't be reached. */
 async function refresh() {
   const updated = document.getElementById("updated");
@@ -341,6 +418,8 @@ async function refresh() {
     const status = await api("GET", "/status");
     noticeNewSession(status.session_started);
     renderStatus(status);
+    renderTelegram(status.telegram);
+    followServerIncident(status.incident);
     updated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
   } catch (error) {
     updated.textContent = `Can't reach the server: ${error.message}`;
@@ -364,7 +443,8 @@ function showBreakMessage(html, kind = "") {
  */
 function updateBreakPanel() {
   const canBreak = !state.broken && !state.building && !state.busy;
-  for (const button of document.querySelectorAll("#break-panel button:not(#reset):not(#go-investigate)")) {
+  // Not Reset, the way to step 2, or the Telegram button: those work while the shop is broken too.
+  for (const button of document.querySelectorAll("#break-panel button:not(#reset):not(#go-investigate):not(#telegram-button)")) {
     button.disabled = !canBreak;
   }
   document.getElementById("custom-idea").disabled = !canBreak;
@@ -412,7 +492,10 @@ async function runAction(action, showError = showBreakMessage) {
 function breakPreset(preset) {
   runAction(async () => {
     await api("POST", `/break/preset/${preset.id}`);
-    showBreakMessage(`Done: <strong>${escapeHtml(preset.title)}</strong>. Customers have started complaining (see the alert below).`, "ok");
+    const next = state.telegramLinked
+      ? "The agent has started by itself, and your phone will get the cause and the fixes."
+      : "Customers have started complaining (see the alert below).";
+    showBreakMessage(`Done: <strong>${escapeHtml(preset.title)}</strong>. ${next}`, "ok");
   });
 }
 
@@ -919,70 +1002,13 @@ function decide(number) {
   }, showAgentMessage);
 }
 
-// A request and its answer code in a log line, in our api's style ("POST /api/orders 201")
-// and in nginx's ('"GET /products HTTP/1.1" 200'). The same pattern as REQUEST in validator.py.
-const REQUEST = /\b(GET|POST|PUT|PATCH|DELETE)\s+(\/[^\s"]*)(?:\s+HTTP\/[\d.]+")?\s+(\d{3})/;
-
-// What the shop's addresses are for, in a customer's words. The "Fixed" message is built from the
-// server's own recovery logs, so it names what really works again in THIS incident. An address
-// that isn't listed (a custom fault can invent one) is shown as it is, e.g. "GET /api/search".
-const PAGE_NAMES = {
-  "/api/orders": "placing orders",
-  "/api/checkout": "checkout",
-  "/api/cart": "the shopping cart",
-  "/api/products": "product pages",
-  "/products": "product pages",
-  "/": "the home page",
-};
-
-/** "api: INFO POST /api/orders 201 in 58ms" -> {container: "api", method, path, code, success}, or null. */
-function parseRequest(line) {
-  const match = line.match(REQUEST);
-  if (!match) return null;
-  const [, method, path, code] = match;
-  // 2xx = the request worked (200 OK, 201 Created...).
-  return { container: line.split(":")[0], method, path, code, success: code.startsWith("2") };
-}
-
-/** ["a"] -> "a", ["a", "b"] -> "a and b", ["a", "b", "c"] -> "a, b and c". */
-function joinWords(words) {
-  return words.length < 2 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
-}
-
 /**
- * What the fix changed for the customers, in words, built from this incident's own data
- * (nothing here is the same sentence for every fault):
- *   back:  what works again, from the recovery logs (or the server checks that passed, if the logs have no request)
- *   kept:  for FIXED, why it stays fixed (the checks that passed, e.g. "job db-backup is off")
- *   still: for FIXED FOR NOW, what's still wrong (the checks that failed), so it will come back
- *   watch: side effects to keep an eye on, e.g. another disk nearly full after moving files there
+ * What the fix changed for the customers, in words: back (what works again), kept (why it stays
+ * fixed), still (what's still wrong) and watch (side effects). Made on the server
+ * (incidents.outcome in Python), so the page and the Telegram messages always say the same thing.
  */
 function outcome(view) {
-  const checks = view.checks || { users_ok: [], stays_fixed: [], warnings: [] };
-  // The check lines read "OK  text" or "NO  text"; a line in brackets says how they combine.
-  const lines = (list, start) => list.filter((line) => line.startsWith(start)).map((line) => line.slice(3).trim());
-  const pages = [];
-  for (const line of view.proof || []) {
-    const request = parseRequest(line);
-    if (!request || !request.success) continue;
-    const name = PAGE_NAMES[request.path] || `${request.method} ${request.path}`;
-    if (!pages.includes(name)) pages.push(name);
-  }
-  const passed = lines(checks.users_ok, "OK");
-  let back = "";
-  if (pages.length) back = `Working again: ${joinWords(pages)}.`;
-  else if (passed.length) back = `Checked on the server: ${joinWords(passed)}.`;
-  // "/ is 90% full now" -> "the main disk (/) is 90% full now": the same words as the Disks list.
-  const warnings = checks.warnings.map((text) => {
-    const mount = text.split(" ")[0];
-    return DISK_NAMES[mount] ? `the ${DISK_NAMES[mount]} (${mount})${text.slice(mount.length)}` : text;
-  });
-  return {
-    back,
-    kept: view.verdict === "FIXED" ? `Stays fixed: ${joinWords(lines(checks.stays_fixed, "OK"))}.` : "",
-    still: view.verdict === "FIXED FOR NOW" ? `The cause is still there: ${joinWords(lines(checks.stays_fixed, "NO"))}.` : "",
-    watch: warnings.length ? `Watch out: ${joinWords(warnings)}.` : "",
-  };
+  return view.outcome || { back: "", kept: "", still: "", watch: "" };
 }
 
 /** The green banner after a fix that worked: what works again, and anything left to watch. */
@@ -1012,28 +1038,18 @@ function renderResult(view) {
     ? verdictStep.text.split("\n").slice(1).filter((line) => !line.startsWith("Decision:")).join("\n").trim()
     : "";
   document.getElementById("verdict-details").innerHTML = details ? folded("How the server checked it", details) : "";
-  renderProof(view.proof || []);
+  renderProof(view.proof_lines || []);
   document.getElementById("result-panel").hidden = false;
 }
 
 /**
- * "api: INFO POST /api/orders 201 in 58ms" -> "api: POST /api/orders answered 201 (success)".
- * Only a request line is reworded; other log lines are shown as they are.
+ * The log lines that show the fix worked, e.g. "api: POST /api/orders answered 201 (success)".
+ * Reworded on the server (incidents.proof_lines), requests that worked first. Hidden when there are none.
  */
-function proofLine(line) {
-  const request = parseRequest(line);
-  if (!request) return { success: false, text: line };
-  const { container, method, path, code, success } = request;
-  return { success, text: `${container}: ${method} ${path} answered ${code}${success ? " (success)" : ""}` };
-}
-
-/** The log lines that show the fix worked, e.g. a new order going through. Hidden when there are none. */
 function renderProof(lines) {
   const box = document.getElementById("proof");
   box.hidden = lines.length === 0;
-  const items = lines.map(proofLine)
-    .sort((a, b) => b.success - a.success)  // the requests that worked first: they're what customers feel
-    .map((line) => `<li class="${line.success ? "success" : ""}">${escapeHtml(line.text)}</li>`);
+  const items = lines.map((line) => `<li class="${line.success ? "success" : ""}">${escapeHtml(line.text)}</li>`);
   box.innerHTML = `<div class="label">Proof from the server: what the logs show now</div><ul>${items.join("")}</ul>`;
 }
 

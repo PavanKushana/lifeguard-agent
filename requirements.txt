@@ -7,3 +7,7 @@ tavily-python==0.8.5
 pytest==9.1.1
 fastapi==0.161.1
 uvicorn==0.54.0
+# Talks to the Telegram Bot API (came with openai before; listed now that our code uses it directly).
+httpx==0.28.1
+# Draws the QR code that opens the Telegram bot on a phone (pure Python, no other packages).
+segno==1.6.6
