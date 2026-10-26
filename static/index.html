@@ -2,8 +2,13 @@
 <!--
   index.html
   The web page: what a visitor (or a judge) sees. Only the layout lives here:
-  the look is in style.css, and app.js fills the empty boxes with data from the API.
-  The sections are numbered in the order a visitor uses them, so nobody has to explain the page.
+  - style.css is the look,
+  - app.js runs the demo (it fills the empty boxes with data from the API),
+  - js/hero3d.js draws the live 3D picture of the demo shop at the top,
+  - js/motion.js adds the movement (smooth scrolling, things fading in as you scroll).
+  Redesigned on 26 Oct after Pavan's and his friends' feedback: no grid background, no "3 a.m."
+  (an outage can happen at any hour), and a new logo instead of the life buoy.
+  Every id that app.js uses is unchanged, so the demo works exactly as before.
 -->
 <html lang="en">
 <head>
@@ -12,33 +17,62 @@
        bottom tab bar know the size of the iPhone home bar, so it can sit just above it. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Lifeguard-Agent: AI on-call engineer</title>
-  <!-- The tab icon: a red-and-white life buoy, drawn as a tiny SVG right here (no image file needed). -->
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23dc2626' stroke-width='7'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='white' stroke-width='7' stroke-dasharray='8.64 8.64'/%3E%3C/svg%3E">
+  <meta name="description" content="An AI on-call engineer for small teams. It finds out why the server broke, suggests safe fixes, and changes nothing until you approve.">
+  <meta name="theme-color" content="#05070f">
+  <!-- The tab icon: the shield made of server units (static/brand/mark.svg). -->
+  <link rel="icon" href="/static/brand/mark.svg" type="image/svg+xml">
+  <!-- Our own copy of the Inter font (not Google Fonts, so visitors' browsers don't contact Google). -->
+  <link rel="preload" href="/static/fonts/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/vendor/lenis/lenis.css">
   <link rel="stylesheet" href="/static/style.css">
   <script>
-    // Pick the theme before the page is drawn, so a dark-mode visitor doesn't see a white flash first.
+    // Pick the theme before the page is drawn, so a visitor doesn't see the wrong colours flash first.
     // A choice made earlier with the sun/moon button wins; otherwise follow the computer's setting.
     (function () {
       let saved = null;
       try { saved = localStorage.getItem("theme"); } catch (error) { /* private window: no saved choice */ }
       const dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = dark ? "dark" : "light";
+      // Things fade in as they scroll into view (js/motion.js), unless the visitor asked their computer
+      // for less motion. Set here, before drawing, so they don't flash up first and then disappear.
+      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("motion");
     })();
   </script>
+  <!-- js/hero3d.js and the three.js add-on import "three" by name; this says where that file is. -->
+  <script type="importmap">{ "imports": { "three": "/static/vendor/three/three.module.min.js" } }</script>
 </head>
 <body>
-  <!-- The bar stays at the top while scrolling. It sits outside <header> on purpose: a sticky
-       element only sticks while its parent is on screen, and the header scrolls away. -->
-  <div class="top-bar">
+  <!-- Soft coloured light behind everything (style.css). Decoration only. -->
+  <div class="backdrop" aria-hidden="true"><span class="glow glow-a"></span><span class="glow glow-b"></span></div>
+
+  <!-- The bar stays at the top while scrolling. -->
+  <div class="top-bar" id="top-bar">
     <div class="top-bar-inner">
-      <div class="brand">
-        <!-- A life buoy: a red ring with four white stripes (the same drawing as the tab icon). -->
-        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
-          <circle cx="16" cy="16" r="11" fill="none" stroke="#dc2626" stroke-width="7"/>
-          <circle cx="16" cy="16" r="11" fill="none" stroke="#fff" stroke-width="7" stroke-dasharray="8.64 8.64"/>
+      <a class="brand" href="#top" aria-label="Lifeguard-Agent, back to the top">
+        <!-- The logo: a shield built from three server units, each with a status light. The holes are a
+             mask (see-through), and the green comes from the theme (--logo-1, --logo-2 in style.css). -->
+        <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+          <defs>
+            <linearGradient id="nav-logo-g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" style="stop-color: var(--logo-1)"/><stop offset="1" style="stop-color: var(--logo-2)"/>
+            </linearGradient>
+            <mask id="nav-logo-m">
+              <rect width="64" height="64" fill="#fff"/>
+              <rect y="21.5" width="64" height="3.6" fill="#000"/><rect y="38" width="64" height="3.6" fill="#000"/>
+              <circle cx="19.5" cy="15.5" r="2.4" fill="#000"/><circle cx="19.5" cy="31.5" r="2.4" fill="#000"/>
+              <rect x="35" y="14.3" width="11" height="2.6" rx="1.3" fill="#666"/><rect x="35" y="30.3" width="11" height="2.6" rx="1.3" fill="#666"/>
+            </mask>
+          </defs>
+          <path d="M32 5 L53 12 V30 C53 44 44 53.5 32 59 C20 53.5 11 44 11 30 V12 Z" fill="url(#nav-logo-g)" mask="url(#nav-logo-m)"/>
         </svg>
         <span class="nowrap">Lifeguard-Agent</span>
-      </div>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="#demo">Live demo</a>
+        <a href="#how">How it works</a>
+        <a href="#safety">Safety</a>
+        <a href="https://github.com/PavanKushana/lifeguard-agent" target="_blank" rel="noopener">GitHub</a>
+      </nav>
       <!-- Light / dark switch. app.js handles the click; only the icon for the other theme shows. -->
       <button id="theme" class="icon-button" type="button" aria-label="Switch theme" title="Switch theme">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -54,194 +88,357 @@
     </div>
   </div>
 
-  <header>
-    <div class="hero">
-      <!-- The space before <br> matters: on a phone the line break is hidden and the words must not run together. -->
-      <h1>When the shop goes down at 3 a.m., <br><span class="nowrap">Lifeguard-Agent</span> finds out why.</h1>
-      <p class="tagline">It does what an on-call engineer would do: reads the logs, checks the disks,
-        looks at what changed, and searches the web for errors it doesn't know.
-        Then it tells you what went wrong and how to fix it. Nothing changes until you say yes.</p>
-      <p class="tagline">Try it on the demo shop below. Break something on purpose and watch.</p>
-      <p class="built-with">Runs on NVIDIA Nemotron 3 (Nano, Super and Ultra) through Nebius Token Factory,
-        with Tavily for web search.</p>
+  <!-- The first screen: what it is in one sentence, and the demo shop as a live 3D picture. -->
+  <header class="hero" id="top">
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <p class="eyebrow-chip" data-hero><span class="live-dot" aria-hidden="true"></span>AI on-call engineer · live demo</p>
+        <!-- The space between the two lines matters: on a phone they flow together and must not run into each other. -->
+        <h1 class="hero-title" data-hero>
+          <span class="line">Something broke.</span>
+          <span class="line"><span class="grad nowrap">Lifeguard-Agent</span> finds out why.</span>
+        </h1>
+        <p class="hero-sub" data-hero>An AI on-call engineer for small teams that run their app on one server.
+          It reads the logs, checks the disks and recent changes, finds the cause and suggests safe fixes.
+          Nothing changes until you say yes.</p>
+        <div class="hero-actions" data-hero>
+          <a class="btn btn-primary" href="#demo">Break the demo shop
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+                 stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></a>
+          <a class="btn btn-outline" href="#how">How it works</a>
+        </div>
+        <ul class="tech" data-hero aria-label="What it runs on">
+          <li>NVIDIA Nemotron 3</li>
+          <li>Nebius Token Factory</li>
+          <li>Tavily web search</li>
+        </ul>
+      </div>
+
+      <!-- The demo shop in 3D (js/hero3d.js): customers, web, api, database and cache, with requests
+           flowing between them. It shows the visitor's own shop live: a broken part turns red, and the
+           glowing orb is the agent, which flies to the part it's checking. -->
+      <div class="hero-visual" id="hero-visual" data-hero>
+        <canvas id="hero-canvas" aria-hidden="true"></canvas>
+        <div class="hero-status" id="hero-status" role="status">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="hero-host">shop-prod-01</span>
+          <span id="hero-status-text">All systems normal</span>
+        </div>
+        <p class="hero-hint" aria-hidden="true">Your demo shop, live. Break something below and watch it here.</p>
+      </div>
     </div>
   </header>
 
-  <!-- data-step says which step is on screen; style.css shows only the sections of that step. -->
-  <main id="main" data-step="1">
-    <!-- The four steps, like a checkout (cart, address, payment, done): one step on screen at a time.
-         Steps not reached yet are greyed out; finished ones stay clickable to look back.
-         On a laptop they sit under the header with numbers; on a phone they become a tab bar at the
-         bottom of the screen with icons, like Instagram's (the icons only show there, see style.css). -->
-    <nav class="stepper" id="stepper" aria-label="Steps">
-      <button type="button" data-step="1">
-        <!-- a lightning bolt: something breaks -->
-        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>
-        <span class="num">1</span><span class="label">Break</span>
-      </button>
-      <button type="button" data-step="2">
-        <!-- a magnifying glass: the agent looks around -->
-        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <span class="num">2</span><span class="label">Investigate</span>
-      </button>
-      <button type="button" data-step="3">
-        <!-- a ticked box: you choose a fix -->
-        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></svg>
-        <span class="num">3</span><span class="label">Decide</span>
-      </button>
-      <button type="button" data-step="4">
-        <!-- a flag: the finish -->
-        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
-        <span class="num">4</span><span class="label">Result</span>
-      </button>
-    </nav>
-
-    <!-- A small status strip on steps 2 and 3, like a phone's status bar: the server at a glance.
-         A click shows the full server below it. app.js fills it. -->
-    <button id="strip" class="strip view s2 s3" type="button" aria-expanded="false"></button>
-
-    <!-- 1. Break the server -->
-    <section class="panel view s1" id="break-panel">
-      <div class="panel-head">
-        <h2><span class="step">1</span> Break the shop</h2>
-        <button id="reset" class="secondary" type="button">Reset server</button>
+  <main>
+    <!-- The live demo: the four steps, like a checkout. -->
+    <section class="section" id="demo">
+      <div class="section-head" data-reveal>
+        <span class="eyebrow">Live demo</span>
+        <h2>Break the shop. Watch it get fixed.</h2>
+        <p>A simulated shop server with four containers, so you can break it safely. The agent only gets
+          the customers' complaint, never the answer.</p>
       </div>
-      <p class="muted">Pick a problem, or describe one in your own words.
-        The agent won't know what you picked. Like a real on-call engineer, it only gets the customers' complaint.</p>
 
-      <!-- Telegram: the 3 a.m. alert on the phone. Shown only when the server has a bot; app.js fills the words. -->
-      <div id="telegram-box" class="telegram" hidden>
-        <span id="telegram-text"></span>
-        <button type="button" id="telegram-button" class="secondary">Get alerts on Telegram</button>
-        <!-- On a laptop: a QR code to scan with the phone, and the two other ways to link. -->
-        <div id="telegram-qr" class="telegram-qr" hidden>
-          <div id="telegram-qr-image" class="qr"></div>
-          <div class="telegram-ways">
-            <strong>Scan this with your phone camera.</strong> Telegram opens the bot: press <strong>Start</strong>.
-            <p class="muted">Telegram on this computer? <a id="telegram-open" href="#" target="_blank" rel="noopener">Open it here</a>.
-              Or send <code id="telegram-start"></code> to <span id="telegram-bot"></span>.
-              The code works once, for 15 minutes.</p>
+      <!-- data-step says which step is on screen; style.css shows only the sections of that step. -->
+      <div id="main" class="console" data-step="1">
+        <!-- The four steps, one on screen at a time. Steps not reached yet are greyed out; finished ones
+             stay clickable to look back. On a laptop they sit at the top of the demo with numbers; on a
+             phone they become a tab bar at the bottom of the screen with icons, like Instagram's. -->
+        <nav class="stepper" id="stepper" aria-label="Steps">
+          <button type="button" data-step="1">
+            <!-- a lightning bolt: something breaks -->
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>
+            <span class="num">1</span><span class="label">Break</span>
+          </button>
+          <button type="button" data-step="2">
+            <!-- a magnifying glass: the agent looks around -->
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <span class="num">2</span><span class="label">Investigate</span>
+          </button>
+          <button type="button" data-step="3">
+            <!-- a ticked box: you choose a fix -->
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></svg>
+            <span class="num">3</span><span class="label">Decide</span>
+          </button>
+          <button type="button" data-step="4">
+            <!-- a flag: the finish -->
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
+            <span class="num">4</span><span class="label">Result</span>
+          </button>
+        </nav>
+
+        <!-- A small status strip on steps 2 and 3, like a phone's status bar: the server at a glance.
+             A click shows the full server below it. app.js fills it. -->
+        <button id="strip" class="strip view s2 s3" type="button" aria-expanded="false"></button>
+
+        <!-- 1. Break the server -->
+        <section class="panel view s1" id="break-panel">
+          <div class="panel-head">
+            <h2><span class="step">1</span> Break the shop</h2>
+            <button id="reset" class="secondary" type="button">Reset server</button>
           </div>
-        </div>
-      </div>
+          <p class="muted">Pick a problem, or describe one in your own words.
+            The agent won't know what you picked. Like a real on-call engineer, it only gets the customers' complaint.</p>
 
-      <h3>Common problems</h3>
-      <!-- app.js puts one button per preset in here (from GET /presets). -->
-      <div id="presets" class="buttons"></div>
+          <!-- Telegram: the alert on the phone. Shown only when the server has a bot; app.js fills the words. -->
+          <div id="telegram-box" class="telegram" hidden>
+            <span id="telegram-text"></span>
+            <button type="button" id="telegram-button" class="secondary">Get alerts on Telegram</button>
+            <!-- On a laptop: a QR code to scan with the phone, and the two other ways to link. -->
+            <div id="telegram-qr" class="telegram-qr" hidden>
+              <div id="telegram-qr-image" class="qr"></div>
+              <div class="telegram-ways">
+                <strong>Scan this with your phone camera.</strong> Telegram opens the bot: press <strong>Start</strong>.
+                <p class="muted">Telegram on this computer? <a id="telegram-open" href="#" target="_blank" rel="noopener">Open it here</a>.
+                  Or send <code id="telegram-start"></code> to <span id="telegram-bot"></span>.
+                  The code works once, for 15 minutes.</p>
+              </div>
+            </div>
+          </div>
 
-      <h3>Describe your own</h3>
-      <form id="custom-form" class="custom">
-        <input id="custom-idea" maxlength="300" autocomplete="off"
-               placeholder="for example: the cache runs out of memory">
-        <button type="submit">Break it</button>
-      </form>
+          <h3>Common problems</h3>
+          <!-- app.js puts one button per preset in here (from GET /presets). -->
+          <div id="presets" class="buttons"></div>
 
-      <h3>Can't decide?</h3>
-      <button id="random" type="button" class="secondary">Pick one for me</button>
+          <h3>Describe your own</h3>
+          <form id="custom-form" class="custom">
+            <input id="custom-idea" maxlength="300" autocomplete="off" aria-label="Describe a problem"
+                   placeholder="for example: the cache runs out of memory">
+            <button type="submit">Break it</button>
+          </form>
 
-      <!-- Short messages for the visitor: "Building your fault...", the guard's refusal, errors. -->
-      <div id="break-message" class="message" hidden></div>
+          <h3>Can't decide?</h3>
+          <button id="random" type="button" class="secondary">Pick one for me</button>
 
-      <!-- Once the server is broken: the way to the next step. app.js sets the words for the situation
-           (broken, agent called, fixed or not fixed). -->
-      <div id="next-investigate" class="next" hidden>
-        <span id="next-investigate-text">The shop is broken and customers are complaining.</span>
-        <button type="button" id="go-investigate">Call the agent →</button>
+          <!-- Short messages for the visitor: "Building your fault...", the guard's refusal, errors. -->
+          <div id="break-message" class="message" hidden></div>
+
+          <!-- Once the server is broken: the way to the next step. app.js sets the words for the situation
+               (broken, agent called, fixed or not fixed). -->
+          <div id="next-investigate" class="next" hidden>
+            <span id="next-investigate-text">The shop is broken and customers are complaining.</span>
+            <button type="button" id="go-investigate">Call the agent →</button>
+          </div>
+        </section>
+
+        <!-- The server, live: on step 1 (watch it break) and step 4 (watch it recover). -->
+        <section class="panel view s1 s4" id="server-panel">
+          <div class="panel-head">
+            <h2>The demo shop <span class="host">shop-prod-01</span></h2>
+            <span id="updated" class="muted"></span>
+          </div>
+
+          <!-- Shown only while something is broken: what the customers are complaining about. -->
+          <div id="alert" class="alert" hidden></div>
+
+          <!-- The shop as a map: customers -> web -> api -> database and cache. Each box turns
+               amber or red when that part has a problem, and lights up while the agent checks it.
+               app.js draws it from GET /status. -->
+          <div id="map" class="map" aria-label="Map of the shop's server"></div>
+
+          <h3>Containers</h3>
+          <!-- app.js puts one card per container in here. -->
+          <div id="containers" class="cards"></div>
+
+          <div class="columns">
+            <div>
+              <h3>Health checks</h3>
+              <div id="endpoints" class="rows"></div>
+            </div>
+            <div>
+              <h3>Disks</h3>
+              <div id="disks" class="rows"></div>
+            </div>
+            <div>
+              <h3>Scheduled jobs</h3>
+              <div id="jobs" class="rows"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. The agent investigates: its steps appear live (Server-Sent Events from /incident/stream). -->
+        <section class="panel view s2" id="agent-panel">
+          <div class="panel-head">
+            <h2><span class="step">2</span> The agent investigates</h2>
+            <span id="agent-clock" class="muted"></span>
+          </div>
+          <p class="muted">Three models work together. Nano reads the complaint and guesses where to look.
+            Super checks logs, disks and recent changes, and searches the web when it finds an error.
+            Ultra reads everything and decides what went wrong.
+            Steps marked <strong>Guardrail</strong> are our own code checking the AI's work.</p>
+          <button id="investigate" type="button" disabled>Call the agent</button>
+          <!-- app.js adds one entry per agent step in here. -->
+          <ol id="timeline" class="timeline"></ol>
+          <div id="agent-message" class="message" hidden></div>
+
+          <!-- Once the agent is done: the way to the next step. -->
+          <div id="next-decide" class="next" hidden>
+            <span id="next-decide-text"></span>
+            <button type="button" id="go-decide"></button>
+          </div>
+        </section>
+
+        <!-- 3. You decide: Ultra's fix options as cards. Nothing changes on the server without a human's approval. -->
+        <section class="panel view s3" id="decide-panel" hidden>
+          <h2><span class="step">3</span> You decide</h2>
+          <div id="root-cause" class="root-cause"></div>
+          <div id="options" class="options"></div>
+          <div class="decide-actions">
+            <button id="reject" type="button" class="secondary">Reject all, change nothing</button>
+          </div>
+        </section>
+
+        <!-- 4. Result: did the fix work? Checked on the server, not taken from the AI's word. -->
+        <section class="panel view s4" id="result-panel" hidden>
+          <h2><span class="step">4</span> Result</h2>
+          <div id="verdict" class="verdict"></div>
+          <!-- After a fix that worked: the new log lines that prove it (e.g. an order going through). -->
+          <div id="proof" class="proof" hidden></div>
+          <div id="verdict-details" class="verdict-details"></div>
+          <p class="links">
+            <a href="/postmortem" target="_blank" rel="noopener">Read the postmortem</a>
+            <a href="/postmortem" download>Download it (.md)</a>
+          </p>
+          <!-- Same as "Reset server" in step 1: a fresh healthy server, back to step 1. -->
+          <button type="button" id="again">Try another one</button>
+        </section>
       </div>
     </section>
 
-    <!-- The server, live: on step 1 (watch it break) and step 4 (watch it recover). -->
-    <section class="panel view s1 s4" id="server-panel">
-      <div class="panel-head">
-        <h2>The demo shop <span class="host">shop-prod-01</span></h2>
-        <span id="updated" class="muted"></span>
+    <!-- How it works: the path from a complaint to a checked fix, step by step (js/motion.js draws the
+         connecting lines one after the other as the section scrolls into view). -->
+    <section class="section" id="how">
+      <div class="section-head" data-reveal>
+        <span class="eyebrow">How it works</span>
+        <h2>From the first complaint to a checked fix</h2>
+        <p>Three NVIDIA Nemotron models share the work like an on-call team. Our own code checks every step,
+          and you make the final call.</p>
       </div>
-
-      <!-- Shown only while something is broken: what the customers are complaining about. -->
-      <div id="alert" class="alert" hidden></div>
-
-      <!-- The shop as a map: customers -> web -> api -> database and cache. Each box turns
-           amber or red when that part has a problem, and lights up while the agent checks it.
-           app.js draws it from GET /status. -->
-      <div id="map" class="map" aria-label="Map of the shop's server"></div>
-
-      <h3>Containers</h3>
-      <!-- app.js puts one card per container in here. -->
-      <div id="containers" class="cards"></div>
-
-      <div class="columns">
-        <div>
-          <h3>Health checks</h3>
-          <div id="endpoints" class="rows"></div>
-        </div>
-        <div>
-          <h3>Disks</h3>
-          <div id="disks" class="rows"></div>
-        </div>
-        <div>
-          <h3>Scheduled jobs</h3>
-          <div id="jobs" class="rows"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 2. The agent investigates: its steps appear live (Server-Sent Events from /incident/stream). -->
-    <section class="panel view s2" id="agent-panel">
-      <div class="panel-head">
-        <h2><span class="step">2</span> The agent investigates</h2>
-        <span id="agent-clock" class="muted"></span>
-      </div>
-      <p class="muted">Three models work together. Nano reads the complaint and guesses where to look.
-        Super checks logs, disks and recent changes, and searches the web when it finds an error.
-        Ultra reads everything and decides what went wrong.
-        Steps marked <strong>Guardrail</strong> are our own code checking the AI's work.</p>
-      <button id="investigate" type="button" disabled>Call the agent</button>
-      <!-- app.js adds one entry per agent step in here. -->
-      <ol id="timeline" class="timeline"></ol>
-      <div id="agent-message" class="message" hidden></div>
-
-      <!-- Once the agent is done: the way to the next step. -->
-      <div id="next-decide" class="next" hidden>
-        <span id="next-decide-text"></span>
-        <button type="button" id="go-decide"></button>
-      </div>
-    </section>
-
-    <!-- 3. You decide: Ultra's fix options as cards. Nothing changes on the server without a human's approval. -->
-    <section class="panel view s3" id="decide-panel" hidden>
-      <h2><span class="step">3</span> You decide</h2>
-      <div id="root-cause" class="root-cause"></div>
-      <div id="options" class="options"></div>
-      <div class="decide-actions">
-        <button id="reject" type="button" class="secondary">Reject all, change nothing</button>
+      <ol class="flow" id="flow">
+        <li class="flow-step spotlight">
+          <span class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+          <span class="flow-tag">Alert</span>
+          <h3>The complaint</h3>
+          <p>Customers report what they see. That's all the agent gets, never the answer.</p>
+        </li>
+        <li class="flow-step spotlight">
+          <span class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></span>
+          <span class="flow-tag model-nano">Nano</span>
+          <h3>First look</h3>
+          <p>Reads the complaint and decides where to look first.</p>
+        </li>
+        <li class="flow-step spotlight">
+          <span class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
+          <span class="flow-tag model-super">Super</span>
+          <h3>Investigates</h3>
+          <p>Runs read-only tools on logs, disks, jobs and recent changes, and searches the web.</p>
+        </li>
+        <li class="flow-step spotlight">
+          <span class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg></span>
+          <span class="flow-tag model-ultra">Ultra</span>
+          <h3>Final call</h3>
+          <p>Checks the evidence, names the root cause and suggests up to 3 fixes.</p>
+        </li>
+        <li class="flow-step spotlight">
+          <span class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <span class="flow-tag">You</span>
+          <h3>You approve</h3>
+          <p>Our code blocks risky steps. Nothing runs without your OK, here or in Telegram.</p>
+        </li>
+        <li class="flow-step spotlight">
+          <span class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4 12 14l-3-3"/></svg></span>
+          <span class="flow-tag ok">Checked</span>
+          <h3>Proven fixed</h3>
+          <p>Confirms customers can use the shop again, then writes the postmortem.</p>
+        </li>
+      </ol>
+      <!-- Plain facts about the agent; js/motion.js counts the numbers up once when they come into view. -->
+      <div class="stats" data-reveal>
+        <div class="stat"><span class="stat-value" data-count="3">3</span><span class="stat-label">Nemotron models</span></div>
+        <div class="stat"><span class="stat-value" data-count="9">9</span><span class="stat-label">read-only tools</span></div>
+        <div class="stat"><span class="stat-value" data-count="5">5</span><span class="stat-label">safe fix actions</span></div>
+        <div class="stat"><span class="stat-value">0</span><span class="stat-label">changes without your OK</span></div>
       </div>
     </section>
 
-    <!-- 4. Result: did the fix work? Checked on the server, not taken from the AI's word. -->
-    <section class="panel view s4" id="result-panel" hidden>
-      <h2><span class="step">4</span> Result</h2>
-      <div id="verdict" class="verdict"></div>
-      <!-- After a fix that worked: the new log lines that prove it (e.g. an order going through). -->
-      <div id="proof" class="proof" hidden></div>
-      <div id="verdict-details" class="verdict-details"></div>
-      <p class="links">
-        <a href="/postmortem" target="_blank" rel="noopener">Read the postmortem</a>
-        <a href="/postmortem" download>Download it (.md)</a>
-      </p>
-      <!-- Same as "Reset server" in step 1: a fresh healthy server, back to step 1. -->
-      <button type="button" id="again">Try another one</button>
+    <!-- Safety: why it can't make things worse. -->
+    <section class="section" id="safety">
+      <div class="section-head" data-reveal>
+        <span class="eyebrow">Safety</span>
+        <h2>Built so it can't make things worse</h2>
+        <p>The AI suggests, our code checks, and a person decides. Nothing runs without all three.</p>
+      </div>
+      <div class="feature-grid">
+        <article class="feature spotlight" data-reveal>
+          <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></span>
+          <h3>It can only look</h3>
+          <p>Every investigation tool is read-only: container status, logs, disk use, jobs and health checks.</p>
+        </article>
+        <article class="feature spotlight" data-reveal>
+          <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
+          <h3>A short menu of fixes</h3>
+          <p>Roll back, restart, change a memory limit, move files or turn off a job. Deleting isn't on the menu.</p>
+        </article>
+        <article class="feature spotlight" data-reveal>
+          <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <h3>Checked twice</h3>
+          <p>Our code checks every fix step before you see it, and again the moment you approve.</p>
+        </article>
+        <article class="feature spotlight" data-reveal>
+          <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg></span>
+          <h3>Proof, not promises</h3>
+          <p>After a fix it checks that the customers' own action works again, and shows you the log lines.</p>
+        </article>
+        <article class="feature spotlight" data-reveal>
+          <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg></span>
+          <h3>Alerts on your phone</h3>
+          <p>Link Telegram once. When the shop breaks, you get the cause and the fixes, and approve with two taps.</p>
+        </article>
+        <article class="feature spotlight" data-reveal>
+          <span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span>
+          <h3>Your own problems too</h3>
+          <p>Describe any problem in your own words. The agent has to find it like a real one.</p>
+        </article>
+      </div>
     </section>
   </main>
 
   <footer class="footer">
-    Made by Pavan Kushana for the Nebius × NVIDIA Global AI Hackathon
-    · <a href="https://github.com/PavanKushana/lifeguard-agent" target="_blank" rel="noopener">Code on GitHub</a>
+    <div class="footer-inner">
+      <span class="brand footer-brand">
+        <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+          <defs>
+            <linearGradient id="foot-logo-g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" style="stop-color: var(--logo-1)"/><stop offset="1" style="stop-color: var(--logo-2)"/>
+            </linearGradient>
+            <mask id="foot-logo-m">
+              <rect width="64" height="64" fill="#fff"/>
+              <rect y="21.5" width="64" height="3.6" fill="#000"/><rect y="38" width="64" height="3.6" fill="#000"/>
+              <circle cx="19.5" cy="15.5" r="2.4" fill="#000"/><circle cx="19.5" cy="31.5" r="2.4" fill="#000"/>
+              <rect x="35" y="14.3" width="11" height="2.6" rx="1.3" fill="#666"/><rect x="35" y="30.3" width="11" height="2.6" rx="1.3" fill="#666"/>
+            </mask>
+          </defs>
+          <path d="M32 5 L53 12 V30 C53 44 44 53.5 32 59 C20 53.5 11 44 11 30 V12 Z" fill="url(#foot-logo-g)" mask="url(#foot-logo-m)"/>
+        </svg>
+        <span class="nowrap">Lifeguard-Agent</span>
+      </span>
+      <p>Made by Pavan Kushana for the Nebius × NVIDIA Global AI Hackathon
+        · <a href="https://github.com/PavanKushana/lifeguard-agent" target="_blank" rel="noopener">Code on GitHub</a></p>
+    </div>
   </footer>
 
   <script src="/static/app.js"></script>
+  <!-- The movement: GSAP (animations), its ScrollTrigger plugin (start them when a section scrolls into
+       view) and Lenis (smooth scrolling), all from our own copies in static/vendor. They load after the
+       page is shown (defer), so the demo never waits for them. -->
+  <script src="/static/vendor/gsap/gsap.min.js" defer></script>
+  <script src="/static/vendor/gsap/ScrollTrigger.min.js" defer></script>
+  <script src="/static/vendor/lenis/lenis.min.js" defer></script>
+  <script src="/static/js/motion.js" defer></script>
+  <script type="module" src="/static/js/hero3d.js"></script>
 </body>
 </html>

@@ -254,11 +254,23 @@ function toolTarget(call) {
   return null;
 }
 
-/** Light up the part the agent is checking, on the map and in the status strip. */
+/** Light up the part the agent is checking, on the map, in the status strip and in the 3D picture. */
 function renderFocus() {
   for (const element of document.querySelectorAll("[data-part]")) {
     element.classList.toggle("focus", element.dataset.part === state.focus);
   }
+  publishStatus();
+}
+
+/**
+ * Tell the 3D picture at the top of the page (js/hero3d.js) how each part is doing and which one the
+ * agent is checking, so it shows the visitor's own shop live. That file may load after this one,
+ * so the latest state is also kept in window.lifeguardStatus for it to pick up.
+ */
+function publishStatus(parts) {
+  const previous = window.lifeguardStatus || {};
+  window.lifeguardStatus = { parts: parts || previous.parts || null, focus: state.focus };
+  window.dispatchEvent(new CustomEvent("lifeguard:status", { detail: window.lifeguardStatus }));
 }
 
 /**
@@ -298,6 +310,7 @@ function renderStatus(status) {
   const parts = partStates(status, resolved);
   renderStrip(status, resolved, parts);
   renderMap(parts);
+  publishStatus(parts);
   if (status.alert) {
     alertBox.className = resolved ? "alert resolved" : "alert";
     // After a fix, the old complaint is gone from the banner: "placing an order fails" under a
@@ -362,15 +375,16 @@ function renderTelegram(info) {
   if (box.hidden) return;
   state.telegramLinked = info.linked;
   if (info.linked) state.telegramWaiting = false;
-  let text = "<strong>📱 Get the 3 a.m. alert on your phone.</strong> Link Telegram: when the shop breaks, " +
+  // No "3 a.m." any more (26 Oct): an outage can happen at any hour, and the page shouldn't suggest otherwise.
+  let text = "<strong>Get alerts on your phone.</strong> Link Telegram: when the shop breaks, " +
              "the agent starts by itself and messages you the fixes to approve with a tap.";
   if (info.linked) {
-    text = "<strong>📱 Telegram linked.</strong> When the shop breaks, the agent starts by itself and your " +
+    text = "<strong>Telegram linked.</strong> When the shop breaks, the agent starts by itself and your " +
            "phone gets the cause and the fix buttons.";
   } else if (state.telegramWaiting) {
     text = PHONE.matches
-      ? "<strong>📱 Telegram is opening.</strong> Press <strong>Start</strong> there to link this page."
-      : "<strong>📱 Scan the QR code with your phone</strong>, then press <strong>Start</strong> in Telegram.";
+      ? "<strong>Telegram is opening.</strong> Press <strong>Start</strong> there to link this page."
+      : "<strong>Scan the QR code with your phone</strong>, then press <strong>Start</strong> in Telegram.";
   }
   document.getElementById("telegram-text").innerHTML = text;
   document.getElementById("telegram-button").textContent = info.linked ? "Stop alerts" : "Get alerts on Telegram";
@@ -1104,9 +1118,15 @@ function goStep(step, scroll = true) {
   if (toggle) toggle.textContent = "Show server ▾";
   updateStepper();
   if (!scroll) return;
-  // Where <main> starts on the page, minus the header bar (58 px) and a little room.
-  const top = main.getBoundingClientRect().top + window.scrollY - 66;
-  if (PHONE.matches || window.scrollY > top) window.scrollTo({ top, behavior: "smooth" });
+  // Where the demo starts on the page, minus the header bar and a little room.
+  const bar = document.getElementById("top-bar");
+  const top = main.getBoundingClientRect().top + window.scrollY - (bar ? bar.offsetHeight : 58) - 10;
+  if (PHONE.matches || window.scrollY > top) {
+    // Lenis (smooth scrolling, js/motion.js) owns the scroll position while it runs: ask it to scroll,
+    // or it would pull the page back to where it was.
+    if (window.lenis) window.lenis.scrollTo(top);
+    else window.scrollTo({ top, behavior: "smooth" });
+  }
 }
 
 for (const tab of document.querySelectorAll("#stepper button")) {
@@ -1131,10 +1151,13 @@ document.getElementById("strip").addEventListener("click", (event) => {
 function setupThemeSwitch() {
   const root = document.documentElement;
   const button = document.getElementById("theme");
+  const themeColour = document.querySelector('meta[name="theme-color"]');
   const label = () => {
     const next = root.dataset.theme === "dark" ? "light" : "dark";
     button.title = `Switch to the ${next} theme`;
     button.setAttribute("aria-label", button.title);  // what a screen reader says for the icon
+    // The phone browser's own top bar takes the page's background colour.
+    if (themeColour) themeColour.content = root.dataset.theme === "dark" ? "#05070f" : "#f5f7fb";
   };
   label();
   button.addEventListener("click", () => {

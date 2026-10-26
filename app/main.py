@@ -22,6 +22,7 @@ from enum import Enum
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -71,6 +72,11 @@ app = FastAPI(
     description="AI SRE for small teams on one Docker host.",
     lifespan=lifespan,
 )
+
+# Compress answers over 1 KB for browsers that accept it (all do): the 3D picture's three.js is
+# ~740 KB and goes over the wire as ~190 KB, which matters on a phone. The agent's live timeline
+# (text/event-stream) is never compressed: Starlette skips that type, so each step still arrives at once.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # The web page's files (HTML, CSS, JavaScript). Found from this file's own place, not from the
 # folder uvicorn was started in, so the page works wherever the server is started from.
@@ -211,7 +217,7 @@ def break_preset(preset_id: PresetId, session: Session = Depends(current_session
 
 
 def after_break(session: Session) -> None:
-    """The 3 a.m. flow: if the visitor linked Telegram, the agent starts by itself and the phone buzzes.
+    """The on-call flow: if the visitor linked Telegram, the agent starts by itself and the phone buzzes.
 
     Without Telegram nothing happens here: the visitor starts the agent on the page.
     The investigation still counts against the visitor's spending limit; if that's reached, the

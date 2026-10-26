@@ -14,7 +14,7 @@ without a human approving it. Built with NVIDIA Nemotron models on Nebius Token 
 
 ## Why
 Big companies have SRE teams and expensive monitoring tools. A small team with one server usually has
-one developer who gets woken up at 3 a.m. and has to dig through logs alone. Lifeguard-Agent does that
+one developer who gets the call when it breaks, day or night, and has to dig through logs alone. Lifeguard-Agent does that
 first investigation for them and shows every step, so they can trust (or question) the result.
 
 ## How it works
@@ -34,13 +34,17 @@ first investigation for them and shows every step, so they can trust (or questio
 8. **Postmortem**: a short incident report (summary, timeline, root cause, fix, follow-ups).
 
 ## The web page
+- **The shop in 3D, live:** at the top, a three.js picture of the visitor's own demo shop. Requests flow
+  between the containers as small lights, a broken part turns red, and a glowing orb (the agent) flies to
+  the part it is checking.
 - **Break the shop:** 6 ready-made problems, a problem described in your own words, or "Pick one for me".
   The agent never learns what you picked; like a real on-call engineer it only gets the customers' complaint.
 - **Watch it investigate live:** every step appears as it happens, with the model that did it. A map of
   the shop (customers, web, api, database, cache) shows where it hurts and which part the agent is checking.
 - **Decide:** the fix options as cards, with risk, undo steps and anything the safety check blocked.
 - **Result:** the verdict, the proof from the server's logs, and the postmortem to read or download.
-- One step on screen at a time, light and dark theme, and on phones a tab bar at the bottom like an app.
+- One step on screen at a time, light and dark theme, smooth scrolling, and on phones a tab bar at the
+  bottom like an app.
 
 ## Phone alerts (Telegram)
 The agent can also page you on Telegram, like an on-call pager:
@@ -197,7 +201,10 @@ app/
   fixes.py        applies an approved fix and checks if it worked
   postmortem.py   writes the incident report
   limits.py       the spending limit for the public demo
-static/           the web page: index.html, style.css, app.js
+static/           the web page: index.html, style.css, app.js (the demo)
+  js/             hero3d.js (the 3D shop), motion.js (smooth scrolling, fade-ins)
+  vendor/         our own copies of three.js, GSAP and Lenis (no outside CDN)
+  fonts/, brand/  the Inter font and the logo
 tests/            pytest tests for the parts without AI
 scripts/          run_incident.py, try_simulator.py and earlier experiments
 results/          saved runs, postmortems and test results

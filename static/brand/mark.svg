@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Lifeguard-Agent's mark: a shield built from three server units, each with a status light.
+       Used as the browser-tab icon. The cut-outs are real holes (a mask), so it works on any tab colour;
+       the green is lighter on dark browser themes and deeper on light ones. -->
+  <style>
+    .a { stop-color: #8df7c6; } .b { stop-color: #22c77f; }
+    @media (prefers-color-scheme: light) { .a { stop-color: #1fbf7a; } .b { stop-color: #0a7f55; } }
+  </style>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="a"/><stop offset="1" class="b"/></linearGradient>
+    <mask id="m">
+      <rect width="64" height="64" fill="#fff"/>
+      <rect y="21.5" width="64" height="3.6" fill="#000"/>
+      <rect y="38" width="64" height="3.6" fill="#000"/>
+      <circle cx="19.5" cy="15.5" r="2.4" fill="#000"/>
+      <circle cx="19.5" cy="31.5" r="2.4" fill="#000"/>
+      <rect x="35" y="14.3" width="11" height="2.6" rx="1.3" fill="#666"/>
+      <rect x="35" y="30.3" width="11" height="2.6" rx="1.3" fill="#666"/>
+    </mask>
+  </defs>
+  <path d="M32 5 L53 12 V30 C53 44 44 53.5 32 59 C20 53.5 11 44 11 30 V12 Z" fill="url(#g)" mask="url(#m)"/>
+</svg>
