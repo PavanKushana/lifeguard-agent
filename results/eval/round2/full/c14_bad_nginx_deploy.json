@@ -1,0 +1,35 @@
+{
+  "fault": "c14_bad_nginx_deploy",
+  "title": "Bad nginx deploy",
+  "kind": "custom",
+  "setup": "full",
+  "service": "web",
+  "category": "deploy",
+  "error": null,
+  "seconds": 33.5,
+  "calls": 10,
+  "tokens_in": 26303,
+  "tokens_out": 5888,
+  "cost": 0.0238,
+  "grade": "partly",
+  "where": true,
+  "what": false,
+  "why": true,
+  "reason": "Location matches (nginx/web), but the described problem (timeout due to config change) differs from the actual regression causing 500 errors; the trigger (new nginx deploy) is correctly identified.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 0,
+  "option_titles": [
+    "Rollback web container to previous nginx image"
+  ],
+  "recommended": 1,
+  "root_cause": "The nginx security update (image nginx:1.28) deployed at 22:54:16 changed the reverse-proxy configuration, causing nginx to time out when connecting to the API container, which results in 500 errors for users.",
+  "truth": "The new nginx version 1.28 introduced a regression that causes it to return 500 Internal Server Error for all requests.",
+  "check_first": "api",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00074
+}

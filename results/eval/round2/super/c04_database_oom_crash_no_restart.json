@@ -1,0 +1,37 @@
+{
+  "fault": "c04_database_oom_crash_no_restart",
+  "title": "Database OOM crash, no restart",
+  "kind": "custom",
+  "setup": "super",
+  "service": "db",
+  "category": "memory",
+  "error": null,
+  "seconds": 54.1,
+  "calls": 11,
+  "tokens_in": 27757,
+  "tokens_out": 5412,
+  "cost": 0.0132,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly points to the PostgreSQL container, a memory\u2011spike OOM caused by the new analytics query, matching the hidden broken part, problem type, and root cause.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED"
+  ],
+  "options": 2,
+  "blocked": 1,
+  "option_titles": [
+    "Rollback API and restart DB",
+    "Increase DB memory limit and restart"
+  ],
+  "recommended": 1,
+  "root_cause": "The newly deployed analytics dashboard query caused a memory spike that triggered the OOM killer (signal\u202f9) on the PostgreSQL container, which killed the process and corrupted the data directory (missing global/pg_control), preventing the DB from restarting.",
+  "truth": "api 2.3.2 introduced an analytics dashboard query that makes PostgreSQL exceed its 1 GB memory limit; the database was killed (OOM, signal 9) and the container has no restart policy, so it stays down.",
+  "check_first": "db container logs (docker logs db) and its status (docker ps -a)",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00045
+}

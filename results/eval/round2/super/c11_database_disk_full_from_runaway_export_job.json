@@ -1,0 +1,37 @@
+{
+  "fault": "c11_database_disk_full_from_runaway_export_job",
+  "title": "Database disk full from runaway export job",
+  "kind": "custom",
+  "setup": "super",
+  "service": "db",
+  "category": "disk",
+  "error": null,
+  "seconds": 31.0,
+  "calls": 13,
+  "tokens_in": 35177,
+  "tokens_out": 5198,
+  "cost": 0.01523,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly points to the database disk being filled by the export job, matching the broken part, problem type, and trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "option_titles": [
+    "Disable export job and move largest export file to root disk, then restart DB",
+    "Disable export job and move medium export file to root disk, then restart DB"
+  ],
+  "recommended": 2,
+  "root_cause": "A continuously\u2011running export job writes large CSV files to the PostgreSQL data directory, filling the /var/lib/postgresql filesystem to 100\u202f% and preventing PostgreSQL from extending its data files or writing WAL, which causes database errors for order POSTs and timeouts on the admin export page.",
+  "truth": "A new data export job runs every minute and writes large CSV files to /var/lib/postgresql/exports, filling the 50 GB database disk so PostgreSQL cannot write new data.",
+  "check_first": "api container logs",
+  "restarts_not_needed": 2,
+  "moved_backup": null,
+  "grader_cost": 0.00045
+}

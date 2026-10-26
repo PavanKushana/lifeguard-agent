@@ -1,0 +1,35 @@
+{
+  "fault": "cache_crashed",
+  "title": "Cache crashed and stayed down",
+  "kind": "preset",
+  "setup": "super",
+  "service": "cache",
+  "category": "crash",
+  "error": null,
+  "seconds": 32.3,
+  "calls": 16,
+  "tokens_in": 51565,
+  "tokens_out": 3943,
+  "cost": 0.01902,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the Redis cache crash caused by a segmentation fault, matching the actual broken part, problem, and one\u2011off root cause.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 2,
+  "option_titles": [
+    "Restart cache with current image"
+  ],
+  "recommended": 1,
+  "root_cause": "The Redis cache container crashed due to a segmentation fault (signal 11) in Redis 7.4.0, making the cache unavailable and causing the API to return 500 errors for login and cart operations while product browsing (which does not require the cache) remained functional.",
+  "truth": "Redis crashed once on a rare bug (signal 11, segmentation fault). The container has no restart policy, so it stayed down, and login and cart, which keep sessions in Redis, fail.",
+  "check_first": "api container logs",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.0006
+}

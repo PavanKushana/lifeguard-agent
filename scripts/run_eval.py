@@ -22,6 +22,11 @@ Run from the project folder (the setups can run at the same time, each in its ow
     python -m scripts.run_eval super
     python -m scripts.run_eval report      (writes results/eval_<date>.md from the saved runs)
 Each finished run is saved as results/eval/<setup>/<fault>.json, so a stopped run picks up where it left off.
+
+A second round of the same faults (to see whether a difference of one fault was luck) adds --round 2:
+    python -m scripts.run_eval full --round 2
+    python -m scripts.run_eval report --round 2   (writes results/eval_round2_<date>.md)
+Round 2 saves in results/eval/round2/<setup>/, so round 1's runs stay as they are.
 """
 
 import json
@@ -126,9 +131,14 @@ def run_one(fault: dict, setup: str) -> dict:
     }
 
 
-def run_setup(setup: str) -> None:
-    """Run one setup on every fault that has no saved run yet."""
-    folder = OUT / setup
+def round_folder(round_number: int) -> Path:
+    """Where a round's runs are saved: round 1 (26 Oct) right in results/eval/, later rounds in results/eval/round<N>/."""
+    return OUT if round_number == 1 else OUT / f"round{round_number}"
+
+
+def run_setup(setup: str, round_number: int = 1) -> None:
+    """Run one setup on every fault that has no saved run yet in this round."""
+    folder = round_folder(round_number) / setup
     folder.mkdir(parents=True, exist_ok=True)
     faults = eval_faults()
     for number, fault in enumerate(faults, start=1):
@@ -147,12 +157,21 @@ def percent(part: int, whole: int) -> str:
     return f"{part} of {whole} ({part / whole:.0%})" if whole else "0 of 0"
 
 
-def report() -> Path:
-    """Write results/eval_<date>.md: the comparison table, the full setup per fault, and the quirks."""
-    runs = {setup: [json.loads(path.read_text(encoding="utf-8")) for path in sorted((OUT / setup).glob("*.json"))]
-            for setup in SETUPS if (OUT / setup).exists()}
+def report(round_number: int = 1) -> Path:
+    """Write results/eval_<date>.md (round 2: eval_round2_<date>.md): the comparison table, the setup per fault, the quirks.
+
+    It never overwrites a report: the 26 Oct one has a part written by hand ("What the numbers say").
+    """
+    name = "eval" if round_number == 1 else f"eval_round{round_number}"
+    path = Path("results") / f"{name}_{datetime.now():%Y-%m-%d}.md"
+    if path.exists():
+        sys.exit(f"{path} already exists (it may hold notes written by hand). Rename or move it first.")
+    folder = round_folder(round_number)
+    runs = {setup: [json.loads(file.read_text(encoding="utf-8")) for file in sorted((folder / setup).glob("*.json"))]
+            for setup in SETUPS if (folder / setup).exists()}
     faults = {fault["id"]: fault for fault in eval_faults()}
-    lines = [f"# Evaluation, {datetime.now():%Y-%m-%d}", "",
+    title = f"# Evaluation, {datetime.now():%Y-%m-%d}" + (f" (round {round_number})" if round_number > 1 else "")
+    lines = [title, "",
              f"{len(faults)} faults (6 presets, {len(faults) - 6} custom faults built by Ultra), each run once per setup. "
              "Every answer graded against the fault's hidden truth by the same grader (Super, fixed checklist: right part, "
              "right problem, right trigger). Every offered fix tried on a copy of the broken server. Costs estimated "
@@ -202,16 +221,17 @@ def report() -> Path:
     total = sum(run["cost"] + run.get("grader_cost", 0) for done in runs.values() for run in done)
     lines += ["", f"Whole evaluation: {sum(len(done) for done in runs.values())} runs, about ${total:.2f} "
                   "including the grading."]
-    path = Path("results") / f"eval_{datetime.now():%Y-%m-%d}.md"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 
 
 if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) > 1 else ""
+    # "--round 2" anywhere after the command; without it, round 1.
+    round_number = int(sys.argv[sys.argv.index("--round") + 1]) if "--round" in sys.argv else 1
     if command in SETUPS:
-        run_setup(command)
+        run_setup(command, round_number)
     elif command == "report":
-        print(f"Saved {report()}")
+        print(f"Saved {report(round_number)}")
     else:
         print(__doc__)

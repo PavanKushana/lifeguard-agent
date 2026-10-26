@@ -1,0 +1,35 @@
+{
+  "fault": "c03_broken_checkout_in_new_api_deploy",
+  "title": "Broken checkout in new API deploy",
+  "kind": "custom",
+  "setup": "super",
+  "service": "api",
+  "category": "deploy",
+  "error": null,
+  "seconds": 30.9,
+  "calls": 13,
+  "tokens_in": 36981,
+  "tokens_out": 3754,
+  "cost": 0.01447,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The engineer correctly identified the API as the faulty component, linked the issue to the recent deploy, and described the null\u2011variable bug that caused the order\u2011placement failure.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 0,
+  "option_titles": [
+    "Rollback API to previous good version"
+  ],
+  "recommended": 1,
+  "root_cause": "The API container was redeployed to version 2.3.2 55 minutes ago, and the new code contains a bug where a variable expected to be a string is None, causing a .strip() call to fail during order placement.",
+  "truth": "api 2.3.2 introduced a regression in the order creation logic: a missing null check on the payment_token field causes an unhandled AttributeError on POST /api/orders, while read endpoints like /api/products still work.",
+  "check_first": "api",
+  "restarts_not_needed": 1,
+  "moved_backup": null,
+  "grader_cost": 0.00055
+}

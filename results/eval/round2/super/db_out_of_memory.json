@@ -1,0 +1,37 @@
+{
+  "fault": "db_out_of_memory",
+  "title": "Database out of memory",
+  "kind": "preset",
+  "setup": "super",
+  "service": "db",
+  "category": "memory",
+  "error": null,
+  "seconds": 32.3,
+  "calls": 13,
+  "tokens_in": 36032,
+  "tokens_out": 4116,
+  "cost": 0.01451,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies DB as broken part, memory OOM problem, and API 2.4.0 query as trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED FOR NOW"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "option_titles": [
+    "Rollback api to previous version",
+    "Increase DB memory limit to accommodate the query"
+  ],
+  "recommended": 1,
+  "root_cause": "The new api version 2.4.0 executes a heavy multi\u2011join query that consumes nearly all of the PostgreSQL container\u2019s memory, triggering the Linux OOM killer and crashing the DB.",
+  "truth": "api 2.4.0 added a sales report query that makes PostgreSQL use more than its 1 GB memory limit, so it is killed (out of memory, signal 9) and keeps restarting.",
+  "check_first": "api",
+  "restarts_not_needed": 1,
+  "moved_backup": null,
+  "grader_cost": 0.00044
+}

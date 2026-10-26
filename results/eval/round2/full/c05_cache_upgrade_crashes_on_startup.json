@@ -1,0 +1,35 @@
+{
+  "fault": "c05_cache_upgrade_crashes_on_startup",
+  "title": "Cache upgrade crashes on startup",
+  "kind": "custom",
+  "setup": "full",
+  "service": "cache",
+  "category": "crash",
+  "error": null,
+  "seconds": 22.8,
+  "calls": 9,
+  "tokens_in": 26349,
+  "tokens_out": 3405,
+  "cost": 0.01779,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly identifies the cache (Redis) as the broken part, describes a crash/restart loop, and attributes it to the Redis 7.5 upgrade rejecting an obsolete config directive.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 0,
+  "option_titles": [
+    "Rollback cache to redis:7.4"
+  ],
+  "recommended": 1,
+  "root_cause": "The Redis 7.5 container crashes on startup because its configuration file /etc/redis/redis.conf contains the directive 'maxmemory-policy' which Redis 7.5 does not recognize, causing a continuous restart loop that makes the cache unavailable to the API.",
+  "truth": "A deploy upgraded Redis from 7.4 to 7.5; the new version refuses to start because the existing redis.conf uses a removed configuration directive, so the cache container crashes in a restart loop and the API cannot reach it.",
+  "check_first": "Inspect the API container's logs and status (e.g., docker logs <api_container> or pod status).",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00051
+}

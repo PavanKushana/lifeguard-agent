@@ -1,0 +1,37 @@
+{
+  "fault": "disk_full",
+  "title": "Database disk full",
+  "kind": "preset",
+  "setup": "full",
+  "service": "db",
+  "category": "disk",
+  "error": null,
+  "seconds": 29.3,
+  "calls": 13,
+  "tokens_in": 34440,
+  "tokens_out": 4561,
+  "cost": 0.02336,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The engineer correctly identified the database as the broken part, the disk\u2011full problem, and the new nightly backup job as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED FOR NOW"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "option_titles": [
+    "Move oldest backup and disable backup job",
+    "Move oldest backup only (temporary relief)"
+  ],
+  "recommended": 1,
+  "root_cause": "The nightly database backup job writes full-size dump files to /var/lib/postgresql/backups on the same volume as PostgreSQL data, filling the disk to 100% and preventing PostgreSQL from extending its data files, which causes order placement failures.",
+  "truth": "The disk /var/lib/postgresql is 100% full because the new nightly backup job saves its dumps on the same disk, so PostgreSQL cannot write new data.",
+  "check_first": "api",
+  "restarts_not_needed": 0,
+  "moved_backup": "older",
+  "grader_cost": 0.0005
+}

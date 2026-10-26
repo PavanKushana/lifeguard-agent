@@ -1,0 +1,37 @@
+{
+  "fault": "c04_database_oom_crash_no_restart",
+  "title": "Database OOM crash, no restart",
+  "kind": "custom",
+  "setup": "full",
+  "service": "db",
+  "category": "memory",
+  "error": null,
+  "seconds": 24.1,
+  "calls": 10,
+  "tokens_in": 24460,
+  "tokens_out": 3716,
+  "cost": 0.01808,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the database as the broken part, the memory\u2011limit/OOM problem, and the API 2.3.2 query as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "option_titles": [
+    "Rollback API to 2.3.1 and restart PostgreSQL",
+    "Increase PostgreSQL memory limit to 2 GiB and restart"
+  ],
+  "recommended": 1,
+  "root_cause": "The API version 2.3.2 introduced an analytics dashboard query that exceeded the PostgreSQL container's 1 GiB memory limit, causing the Linux OOM killer to terminate the database process (signal 9).",
+  "truth": "api 2.3.2 introduced an analytics dashboard query that makes PostgreSQL exceed its 1 GB memory limit; the database was killed (OOM, signal 9) and the container has no restart policy, so it stays down.",
+  "check_first": "database container logs and restart configuration",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00049
+}

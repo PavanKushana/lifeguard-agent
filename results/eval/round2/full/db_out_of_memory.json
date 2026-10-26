@@ -1,0 +1,37 @@
+{
+  "fault": "db_out_of_memory",
+  "title": "Database out of memory",
+  "kind": "preset",
+  "setup": "full",
+  "service": "db",
+  "category": "memory",
+  "error": null,
+  "seconds": 28.5,
+  "calls": 13,
+  "tokens_in": 37607,
+  "tokens_out": 3473,
+  "cost": 0.02047,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly identifies the DB as the broken part, the OOM memory issue, and the api 2.4.0 sales report query as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED FOR NOW"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "option_titles": [
+    "Rollback API to previous version",
+    "Increase DB memory limit to 2\u202fGiB"
+  ],
+  "recommended": 1,
+  "root_cause": "The new sales report page (api 2.4.0) executes a heavy SQL query that sorts large joined tables, causing PostgreSQL to exceed its 1\u202fGiB memory limit and be OOM killed (signal\u202f9), which brings down the API and causes intermittent 503 errors.",
+  "truth": "api 2.4.0 added a sales report query that makes PostgreSQL use more than its 1 GB memory limit, so it is killed (out of memory, signal 9) and keeps restarting.",
+  "check_first": "web (nginx) container",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00042
+}

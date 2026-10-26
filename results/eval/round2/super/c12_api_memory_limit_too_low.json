@@ -1,0 +1,37 @@
+{
+  "fault": "c12_api_memory_limit_too_low",
+  "title": "API memory limit too low",
+  "kind": "custom",
+  "setup": "super",
+  "service": "api",
+  "category": "memory",
+  "error": null,
+  "seconds": 22.6,
+  "calls": 10,
+  "tokens_in": 24222,
+  "tokens_out": 3164,
+  "cost": 0.01011,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis accurately points to the API container, describes the memory/OOM problem, and cites the reduced memory limit as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED FOR NOW"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "option_titles": [
+    "Restore API memory limit and restart",
+    "Temporarily restart API to restore service"
+  ],
+  "recommended": 1,
+  "root_cause": "The API container's memory limit was reduced from 512\u202fMiB to 150\u202fMiB, causing the Python app to exceed the limit and be OOM\u2011killed (exit code\u202f137) on each start.",
+  "truth": "Someone lowered the api container's memory limit from 512MiB to 150MiB, below its normal working set of ~180MiB, so the kernel OOM killer repeatedly terminates it (exit code 137).",
+  "check_first": "api",
+  "restarts_not_needed": 2,
+  "moved_backup": null,
+  "grader_cost": 0.00037
+}

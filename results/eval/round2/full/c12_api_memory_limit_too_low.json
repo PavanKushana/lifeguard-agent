@@ -1,0 +1,37 @@
+{
+  "fault": "c12_api_memory_limit_too_low",
+  "title": "API memory limit too low",
+  "kind": "custom",
+  "setup": "full",
+  "service": "api",
+  "category": "memory",
+  "error": null,
+  "seconds": 28.6,
+  "calls": 10,
+  "tokens_in": 24413,
+  "tokens_out": 3914,
+  "cost": 0.01719,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly identifies the API container, the memory\u2011limit/OOM problem, and the trigger of the reduced memory limit.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "option_titles": [
+    "Restore api memory limit to previous 512\u202fMiB",
+    "Increase api memory limit to 1024\u202fMiB for larger buffer"
+  ],
+  "recommended": 1,
+  "root_cause": "The API container's memory limit was reduced from 512\u202fMiB to 150\u202fMiB 30\u202fminutes ago, which is insufficient for the application's startup memory needs, causing the Linux OOM killer to terminate the container immediately after start (exit code 137).",
+  "truth": "Someone lowered the api container's memory limit from 512MiB to 150MiB, below its normal working set of ~180MiB, so the kernel OOM killer repeatedly terminates it (exit code 137).",
+  "check_first": "API container logs and Docker restart count",
+  "restarts_not_needed": 2,
+  "moved_backup": null,
+  "grader_cost": 0.00039
+}

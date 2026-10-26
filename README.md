@@ -93,28 +93,37 @@ The agent can also page you on Telegram, like an on-call pager:
 
 ## Does it work? The evaluation
 20 faults: the 6 presets and 14 faults Ultra built from short ideas ([results/eval_faults/](results/eval_faults/)).
-Every fault ran once per setup, without the memory of past incidents. Each answer was graded against the
-fault's hidden truth by the same grader (right part, right problem, right trigger), and every offered fix was
-tried on a copy of the broken server.
+Without the memory of past incidents. Each answer was graded against the fault's hidden truth by the same
+grader (right part, right problem, right trigger), and every offered fix was tried on a copy of the broken server.
+Round 1 compared 3 setups. Round 2 ran the two strongest again on the same 20 faults, to see how much of a
+small difference is luck.
 
-| Setup | Right cause | Partly right | Wrong | Recommended fix works | Offered fixes that work | Avg time | Avg cost |
-|---|---|---|---|---|---|---|---|
-| Nano + Super + Ultra (the demo) | 15 of 20 | 5 | 0 | 20 of 20 | 26 of 30 | 29 s | $0.022 |
-| Super alone | 16 of 20 | 4 | 0 | 20 of 20 | 27 of 34 | 24 s | $0.011 |
-| Nano alone | 15 of 20 | 5 | 0 | 16 of 20 | 21 of 47 | 132 s | $0.004 |
+| Setup | Round | Right cause | Partly right | Wrong | Recommended fix works | Offered fixes that work | Avg time | Avg cost |
+|---|---|---|---|---|---|---|---|---|
+| Nano + Super + Ultra (the demo) | 1 | 15 of 20 | 5 | 0 | 20 of 20 | 26 of 30 | 29 s | $0.022 |
+| | 2 | 17 of 20 | 3 | 0 | 20 of 20 | 26 of 29 | 31 s | $0.021 |
+| | **both** | **32 of 40** | 8 | **0** | **40 of 40** | **52 of 59 (88%)** | 30 s | $0.022 |
+| Super alone | 1 | 16 of 20 | 4 | 0 | 20 of 20 | 27 of 34 | 24 s | $0.011 |
+| | 2 | 18 of 20 | 2 | 0 | 20 of 20 | 28 of 33 | 36 s | $0.014 |
+| | **both** | **34 of 40** | 6 | **0** | **40 of 40** | **55 of 67 (82%)** | 30 s | $0.013 |
+| Nano alone | 1 | 15 of 20 | 5 | 0 | 16 of 20 | 21 of 47 | 132 s | $0.004 |
 
 What it shows:
-- **The cause:** no setup got a fault completely wrong. "Partly" mostly means the right part and the right
-  problem, but a different trigger. For example, all three blamed a one-off Redis crash on an upgrade from
-  9 days earlier.
-- **The fix:** with Super or Ultra writing the options, every recommended fix worked on the server.
-  Nano alone found causes as often, but 4 of its recommended fixes didn't work.
-- **The team vs Super alone:** on this set the 3-model team was not more accurate than Super alone, which was
-  faster and cost half as much. Ultra's options were a little more reliable (87% worked against 79%), but with
-  20 faults that's too small to claim much. More faults and repeated runs come before any change to the demo.
-- Costs are estimates from list prices. The whole evaluation (60 runs plus grading) cost about $0.79.
+- **The cause:** no setup got a fault completely wrong in 100 runs. "Partly" mostly means the right part and
+  the right problem, but a different trigger. For example, in round 1 all three blamed a one-off Redis crash on
+  an upgrade from 9 days earlier.
+- **Luck is real:** the same setups on the same faults found 2 more causes in round 2 than in round 1.
+  So a difference of 1 or 2 faults between setups doesn't say much.
+- **The fix:** with Super or Ultra writing the options, every recommended fix worked on the server, 80 of 80.
+  Nano alone found causes as often, but 4 of its 20 recommended fixes didn't work, and it was 4-5 times slower.
+- **Why the demo keeps Ultra for the final call:** Super alone finds the cause just as well (34 against 32 of 40)
+  for about half the cost. But the options Ultra writes are safer: more of them work (88% against 82%), and in
+  both rounds it offered far fewer restarts nobody needed (6 against 21). The final call is the step a human
+  acts on, so that's where the biggest model earns its place.
+- Costs are estimates from list prices. Both rounds (100 runs plus grading) cost about $1.52.
 
-Full report, fault by fault, with the quirks and limits: [results/eval_2026-10-26.md](results/eval_2026-10-26.md).
+Full reports, fault by fault, with the quirks and limits: [round 1](results/eval_2026-10-26.md),
+[round 2](results/eval_round2_2026-10-26.md).
 
 ## Status
 - [x] Nemotron on Token Factory working, 4 models compared ([results](results/))

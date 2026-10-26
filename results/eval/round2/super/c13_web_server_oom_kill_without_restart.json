@@ -1,0 +1,39 @@
+{
+  "fault": "c13_web_server_oom_kill_without_restart",
+  "title": "Web server OOM kill without restart",
+  "kind": "custom",
+  "setup": "super",
+  "service": "web",
+  "category": "crash",
+  "error": null,
+  "seconds": 25.9,
+  "calls": 10,
+  "tokens_in": 24228,
+  "tokens_out": 3913,
+  "cost": 0.01079,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The engineer correctly identified the web container, the OOM\u2011kill crash, and the memory\u2011limit exceed as the triggering cause.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED",
+    "FIXED"
+  ],
+  "options": 3,
+  "blocked": 0,
+  "option_titles": [
+    "Increase web memory limit and restart",
+    "Restart web container",
+    "Raise web memory limit to 1024\u202fMiB and restart"
+  ],
+  "recommended": 1,
+  "root_cause": "The nginx web container was terminated by the Linux OOM killer after exceeding its 256\u202fMiB memory limit, as shown by exit code\u202f137 and the container being stopped while no application errors appear.",
+  "truth": "The web container was killed by the OOM killer due to a temporary memory spike, and because it has no restart policy, it remained stopped.",
+  "check_first": "web container",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00081
+}

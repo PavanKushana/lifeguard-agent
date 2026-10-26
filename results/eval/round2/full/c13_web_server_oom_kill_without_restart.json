@@ -1,0 +1,37 @@
+{
+  "fault": "c13_web_server_oom_kill_without_restart",
+  "title": "Web server OOM kill without restart",
+  "kind": "custom",
+  "setup": "full",
+  "service": "web",
+  "category": "crash",
+  "error": null,
+  "seconds": 28.8,
+  "calls": 13,
+  "tokens_in": 37042,
+  "tokens_out": 4144,
+  "cost": 0.02191,
+  "grade": "partly",
+  "where": true,
+  "what": true,
+  "why": false,
+  "reason": "Engineer correctly identified the web container and OOM crash but did not name the memory\u2011spike trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "option_titles": [
+    "Restart web container only",
+    "Restart web and raise its memory limit to 512\u202fMiB"
+  ],
+  "recommended": 2,
+  "root_cause": "The web container (nginx:1.27) exited with code 137 (SIGKILL) 5 minutes ago, consistent with an out-of-memory kill of a process limited to 256\u202fMiB. No recent changes to the web image occurred; the container ran for days before this sudden crash.",
+  "truth": "The web container was killed by the OOM killer due to a temporary memory spike, and because it has no restart policy, it remained stopped.",
+  "check_first": "web container status/logs",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00116
+}

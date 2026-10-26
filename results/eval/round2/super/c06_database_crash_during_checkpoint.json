@@ -1,0 +1,35 @@
+{
+  "fault": "c06_database_crash_during_checkpoint",
+  "title": "Database crash during checkpoint",
+  "kind": "custom",
+  "setup": "super",
+  "service": "db",
+  "category": "crash",
+  "error": null,
+  "seconds": 61.4,
+  "calls": 16,
+  "tokens_in": 45756,
+  "tokens_out": 4751,
+  "cost": 0.018,
+  "grade": "partly",
+  "where": true,
+  "what": true,
+  "why": false,
+  "reason": "Engineer correctly identified the db component and crash but misattributed the trigger to filesystem rather than internal page corruption.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 0,
+  "option_titles": [
+    "Restart the database container"
+  ],
+  "recommended": 1,
+  "root_cause": "The PostgreSQL container panicked because its data directory was on a read\u2011only or corrupted filesystem, causing the server to abort and exit.",
+  "truth": "A data page checksum failure during a checkpoint triggered a PostgreSQL PANIC. Automatic recovery attempted but failed because the corrupted page is in a critical system catalog, leaving the database process exited and unable to start.",
+  "check_first": "db",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00055
+}

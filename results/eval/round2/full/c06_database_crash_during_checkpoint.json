@@ -1,0 +1,37 @@
+{
+  "fault": "c06_database_crash_during_checkpoint",
+  "title": "Database crash during checkpoint",
+  "kind": "custom",
+  "setup": "full",
+  "service": "db",
+  "category": "crash",
+  "error": null,
+  "seconds": 38.7,
+  "calls": 13,
+  "tokens_in": 36769,
+  "tokens_out": 6039,
+  "cost": 0.02774,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "All three aspects match: the faulty component is the PostgreSQL DB, the issue is a crash/PANIC, and both point to underlying storage corruption as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "option_titles": [
+    "Restart db container",
+    "Restart db container and disable rotate-logs job"
+  ],
+  "recommended": 1,
+  "root_cause": "The PostgreSQL container crashed and stopped because the filesystem hosting its data directory (/var/lib/postgresql) suffered corruption or went read-only, evidenced by the PANIC log 'could not read block 12345 in file \"base/1262/5.1\": read-only filesystem or corrupted data' and the inability to access /var/lib/postgresql/data/base.",
+  "truth": "A data page checksum failure during a checkpoint triggered a PostgreSQL PANIC. Automatic recovery attempted but failed because the corrupted page is in a critical system catalog, leaving the database process exited and unable to start.",
+  "check_first": "Inspect the db container status with docker ps or docker container ls",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00084
+}

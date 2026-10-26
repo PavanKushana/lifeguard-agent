@@ -1,0 +1,37 @@
+{
+  "fault": "c07_api_deploy_causes_redis_memory_pressure",
+  "title": "API deploy causes Redis memory pressure",
+  "kind": "custom",
+  "setup": "full",
+  "service": "api",
+  "category": "deploy",
+  "error": null,
+  "seconds": 40.6,
+  "calls": 15,
+  "tokens_in": 42594,
+  "tokens_out": 4130,
+  "cost": 0.02334,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly identifies the api deployment as the source, the problem as a deploy\u2011induced load, and the trigger as the new api version.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "option_titles": [
+    "Rollback API to previous version",
+    "Increase Redis memory limit"
+  ],
+  "recommended": 1,
+  "root_cause": "The deployment of api 2.3.2 (new checkout flow) sharply increased Redis write traffic, pushing the cache container's memory usage to 94% of its 256\u202fMiB limit and causing Redis commands to take hundreds of milliseconds, which slowed API responses and page loads.",
+  "truth": "API 2.3.2 deployed this morning writes large cart objects to Redis, filling its 256 MB limit and forcing frequent blocking RDB saves that add hundreds of ms to every cache call.",
+  "check_first": "api",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00082
+}

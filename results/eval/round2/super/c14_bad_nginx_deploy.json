@@ -1,0 +1,35 @@
+{
+  "fault": "c14_bad_nginx_deploy",
+  "title": "Bad nginx deploy",
+  "kind": "custom",
+  "setup": "super",
+  "service": "web",
+  "category": "deploy",
+  "error": null,
+  "seconds": 27.3,
+  "calls": 14,
+  "tokens_in": 44431,
+  "tokens_out": 3612,
+  "cost": 0.01658,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly identifies the web (nginx) component, attributes the issue to the nginx 1.28 update (deploy), and cites the update as the triggering cause.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 0,
+  "option_titles": [
+    "Rollback nginx to previous version"
+  ],
+  "recommended": 1,
+  "root_cause": "The nginx:1.28 update changed the upstream configuration, causing nginx to time out when connecting to the API backend, which results in 500 errors for users.",
+  "truth": "The new nginx version 1.28 introduced a regression that causes it to return 500 Internal Server Error for all requests.",
+  "check_first": "api",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00064
+}
