@@ -1,0 +1,31 @@
+{
+  "fault": "cache_crashed",
+  "title": "Cache crashed and stayed down",
+  "kind": "preset",
+  "setup": "super",
+  "service": "cache",
+  "category": "crash",
+  "error": null,
+  "seconds": 23.4,
+  "calls": 12,
+  "tokens_in": 29301,
+  "tokens_out": 2976,
+  "cost": 0.01147,
+  "grade": "partly",
+  "where": true,
+  "what": true,
+  "why": false,
+  "reason": "The engineer blamed the Redis upgrade as the cause, but the real crash was a one\u2011off bug with no external trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 1,
+  "root_cause": "The cache (Redis) container crashed with a SIGSEGV after being upgraded from Redis 7.2 to 7.4, causing the API to lose connection to Redis and return 500/503 errors for login and cart operations.",
+  "truth": "Redis crashed once on a rare bug (signal 11, segmentation fault). The container has no restart policy, so it stayed down, and login and cart, which keep sessions in Redis, fail.",
+  "check_first": "api container",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.0006
+}

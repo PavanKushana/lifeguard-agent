@@ -1,0 +1,32 @@
+{
+  "fault": "c03_broken_checkout_in_new_api_deploy",
+  "title": "Broken checkout in new API deploy",
+  "kind": "custom",
+  "setup": "nano",
+  "service": "api",
+  "category": "deploy",
+  "error": null,
+  "seconds": 208.1,
+  "calls": 10,
+  "tokens_in": 27864,
+  "tokens_out": 7708,
+  "cost": 0.00352,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the API component, the AttributeError caused by the deployment, and the trigger as the new version's validation code.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "root_cause": "The deployment of API version 2.3.2 added order\u2011validation code that calls .strip() on a field that can be None, causing an AttributeError and returning 500 errors for order POSTs.",
+  "truth": "api 2.3.2 introduced a regression in the order creation logic: a missing null check on the payment_token field causes an unhandled AttributeError on POST /api/orders, while read endpoints like /api/products still work.",
+  "check_first": "api",
+  "restarts_not_needed": 1,
+  "moved_backup": null,
+  "grader_cost": 0.00058
+}

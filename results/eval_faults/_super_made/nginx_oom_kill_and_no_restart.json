@@ -1,0 +1,81 @@
+{
+  "title": "Nginx OOM kill and no restart",
+  "alert": "Users see a connection error or blank page when trying to load the shop homepage.",
+  "truth": {
+    "service": "web",
+    "category": "crash",
+    "root_cause": "The nginx process was killed by the OOM killer after exceeding its memory limit; the container has no restart policy, so it stayed down.",
+    "fix": "Increase the memory limit for the web container to prevent further OOM kills."
+  },
+  "changes": {
+    "containers": {
+      "web": {
+        "image": "nginx:1.27",
+        "status": "exited",
+        "exit_code": 137,
+        "since_minutes_ago": 30,
+        "restarts": 0,
+        "cpu_percent": 0,
+        "memory_mb": 0,
+        "memory_limit_mb": 256
+      }
+    },
+    "logs": {
+      "web": [
+        [
+          35,
+          "172.18.0.1 - - \"GET / HTTP/1.1\" 200 612"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "web": 30
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "container_running",
+          "container": "web"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "memory_limit_mb",
+          "container": "web",
+          "at_least": 512
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "web": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "memory_mb": 25,
+        "cpu_percent": 0.5,
+        "memory_limit_mb": 512
+      }
+    },
+    "logs": {
+      "web": [
+        [
+          0,
+          "172.18.0.1 - - \"GET / HTTP/1.1\" 200 5123"
+        ]
+      ]
+    },
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 40
+      }
+    }
+  },
+  "id": "custom",
+  "idea": "the web server (nginx) was killed once and didn't come back up (it has no restart policy)"
+}

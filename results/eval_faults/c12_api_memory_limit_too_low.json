@@ -1,0 +1,173 @@
+{
+  "title": "API memory limit too low",
+  "alert": "The shop API keeps going down; health checks fail and the API container restarts repeatedly.",
+  "truth": {
+    "service": "api",
+    "category": "memory",
+    "root_cause": "Someone lowered the api container's memory limit from 512MiB to 150MiB, below its normal working set of ~180MiB, so the kernel OOM killer repeatedly terminates it (exit code 137).",
+    "fix": "Raise the api memory limit back to at least 512MiB so it stops being killed."
+  },
+  "changes": {
+    "containers": {
+      "api": {
+        "memory_limit_mb": 150,
+        "status": "restarting",
+        "restarts": 5,
+        "since_minutes_ago": 2,
+        "exit_code": 137,
+        "cpu_percent": 20.0,
+        "memory_mb": 50
+      }
+    },
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 503,
+        "ms": 5
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          30,
+          "INFO Starting shopapp api 2.3.1"
+        ],
+        [
+          25,
+          "INFO Starting shopapp api 2.3.1"
+        ],
+        [
+          20,
+          "INFO Starting shopapp api 2.3.1"
+        ],
+        [
+          15,
+          "INFO Starting shopapp api 2.3.1"
+        ],
+        [
+          10,
+          "INFO Starting shopapp api 2.3.1"
+        ],
+        [
+          5,
+          "INFO Starting shopapp api 2.3.1"
+        ],
+        [
+          2,
+          "INFO Starting shopapp api 2.3.1"
+        ]
+      ],
+      "db": [
+        [
+          30,
+          "LOG:  checkpoint complete: wrote 412 buffers (2.5%)"
+        ],
+        [
+          25,
+          "LOG:  checkpoint starting: time"
+        ],
+        [
+          24,
+          "LOG:  checkpoint complete: wrote 398 buffers (2.4%)"
+        ],
+        [
+          20,
+          "LOG:  checkpoint starting: time"
+        ],
+        [
+          19,
+          "LOG:  checkpoint complete: wrote 405 buffers (2.5%)"
+        ],
+        [
+          15,
+          "LOG:  checkpoint starting: time"
+        ],
+        [
+          14,
+          "LOG:  checkpoint complete: wrote 391 buffers (2.4%)"
+        ],
+        [
+          10,
+          "LOG:  checkpoint starting: time"
+        ],
+        [
+          9,
+          "LOG:  checkpoint complete: wrote 410 buffers (2.5%)"
+        ],
+        [
+          5,
+          "LOG:  checkpoint starting: time"
+        ],
+        [
+          4,
+          "LOG:  checkpoint complete: wrote 387 buffers (2.4%)"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "api": 30
+    },
+    "recent_changes": [
+      [
+        30,
+        "Lowered api memory limit from 512MiB to 150MiB"
+      ]
+    ]
+  },
+  "fixed_when": {
+    "users_ok": {
+      "any": [
+        {
+          "check": "container_running",
+          "container": "api"
+        },
+        {
+          "check": "memory_limit_mb",
+          "container": "api",
+          "at_least": 512
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "memory_limit_mb",
+          "container": "api",
+          "at_least": 512
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "api": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "memory_mb": 180,
+        "cpu_percent": 4.0,
+        "memory_limit_mb": 512
+      }
+    },
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ],
+      "db": [
+        [
+          0,
+          "LOG:  checkpoint complete: wrote 210 buffers (1.3%)"
+        ]
+      ]
+    }
+  },
+  "id": "c12_api_memory_limit_too_low",
+  "idea": "someone lowered the api's memory limit by mistake and it keeps getting killed"
+}

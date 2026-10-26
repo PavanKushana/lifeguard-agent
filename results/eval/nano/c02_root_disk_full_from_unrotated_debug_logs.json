@@ -1,0 +1,32 @@
+{
+  "fault": "c02_root_disk_full_from_unrotated_debug_logs",
+  "title": "Root disk full from unrotated debug logs",
+  "kind": "custom",
+  "setup": "nano",
+  "service": "web",
+  "category": "disk",
+  "error": null,
+  "seconds": 174.7,
+  "calls": 11,
+  "tokens_in": 42805,
+  "tokens_out": 12582,
+  "cost": 0.00559,
+  "grade": "partly",
+  "where": false,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly identifies the web/API component, the disk\u2011full problem, and the new collect-debug-logs cron job as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED FOR NOW"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "root_cause": "The newly added collect-debug-logs cron job continuously appended large debug dumps to /var/log/shop/debug.log, filling the root filesystem until it was 97% full and preventing the API container from writing logs, which caused 500 errors on dynamic product pages.",
+  "truth": "A new cron job 'collect-debug-logs' was added two days ago. It writes verbose debug output to /var/log/shop/debug.log but the logrotate config was not updated for this file, so the log grows unbounded. The root disk (/) reached 97% used, leaving no space for nginx to write its access log or for the api container to write its log, causing 500 errors on all dynamic requests.",
+  "check_first": "api container logs",
+  "restarts_not_needed": 1,
+  "moved_backup": null,
+  "grader_cost": 0.00053
+}

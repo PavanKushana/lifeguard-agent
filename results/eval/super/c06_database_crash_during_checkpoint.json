@@ -1,0 +1,31 @@
+{
+  "fault": "c06_database_crash_during_checkpoint",
+  "title": "Database crash during checkpoint",
+  "kind": "custom",
+  "setup": "super",
+  "service": "db",
+  "category": "crash",
+  "error": null,
+  "seconds": 29.5,
+  "calls": 13,
+  "tokens_in": 37153,
+  "tokens_out": 3368,
+  "cost": 0.01418,
+  "grade": "partly",
+  "where": true,
+  "what": true,
+  "why": false,
+  "reason": "Engineer correctly identifies the db and panic but misattributes the trigger to a read\u2011only mount instead of internal checksum corruption.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 0,
+  "root_cause": "The PostgreSQL container exited because its data directory on the host was temporarily mounted read\u2011only, causing PostgreSQL to panic when it could not read a data block.",
+  "truth": "A data page checksum failure during a checkpoint triggered a PostgreSQL PANIC. Automatic recovery attempted but failed because the corrupted page is in a critical system catalog, leaving the database process exited and unable to start.",
+  "check_first": "db",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00056
+}

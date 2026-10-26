@@ -1,0 +1,98 @@
+{
+  "title": "Bad nginx deploy",
+  "alert": "Users see '500 Internal Server Error' when visiting the shop homepage.",
+  "truth": {
+    "service": "web",
+    "category": "deploy",
+    "root_cause": "The new nginx version 1.28 introduced a regression that causes it to return 500 Internal Server Error for all requests.",
+    "fix": "Roll back web to nginx:1.27."
+  },
+  "changes": {
+    "containers": {
+      "web": {
+        "image": "nginx:1.28"
+      }
+    },
+    "endpoints": {
+      "http://localhost/": {
+        "status": 500,
+        "ms": 100
+      }
+    },
+    "logs": {
+      "web": [
+        [
+          30,
+          "[error] 12#12: *1 upstream timed out (110: Connection timed out) while reading response header from upstream, client: 172.18.0.1, server: localhost, request: \"GET / HTTP/1.1\", upstream: \"http://api:8000/\", host: \"localhost\""
+        ],
+        [
+          25,
+          "[error] 12#12: *2 upstream timed out (110: Connection timed out) while reading response header from upstream, client: 172.18.0.1, server: localhost, request: \"GET /products HTTP/1.1\", upstream: \"http://api:8000/\", host: \"localhost\""
+        ],
+        [
+          20,
+          "[error] 12#12: *3 upstream timed out (110: Connection timed out) while reading response header from upstream, client: 172.18.0.1, server: localhost, request: \"GET / HTTP/1.1\", upstream: \"http://api:8000/\", host: \"localhost\""
+        ],
+        [
+          15,
+          "[error] 12#12: *4 upstream timed out (110: Connection timed out) while reading response header from upstream, client: 172.18.0.1, server: localhost, request: \"GET /products HTTP/1.1\", upstream: \"http://api:8000/\", host: \"localhost\""
+        ],
+        [
+          10,
+          "[error] 12#12: *5 upstream timed out (110: Connection timed out) while reading response header from upstream, client: 172.18.0.1, server: localhost, request: \"GET / HTTP/1.1\", upstream: \"http://api:8000/\", host: \"localhost\""
+        ],
+        [
+          5,
+          "[error] 12#12: *6 upstream timed out (110: Connection timed out) while reading response header from upstream, client: 172.18.0.1, server: localhost, request: \"GET /products HTTP/1.1\", upstream: \"http://api:8000/\", host: \"localhost\""
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "web": 30
+    },
+    "recent_changes": [
+      [
+        30,
+        "Deployed web nginx:1.28 (security update)"
+      ]
+    ]
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "image",
+          "container": "web",
+          "is": "nginx:1.27"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "web",
+          "is": "nginx:1.27"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 40
+      }
+    },
+    "logs": {
+      "web": [
+        [
+          0,
+          "172.18.0.1 - - \"GET / HTTP/1.1\" 200 5123"
+        ]
+      ]
+    }
+  },
+  "id": "c14_bad_nginx_deploy",
+  "idea": "a new nginx version for web returns errors"
+}

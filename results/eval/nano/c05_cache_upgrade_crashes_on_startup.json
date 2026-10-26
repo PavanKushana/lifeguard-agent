@@ -1,0 +1,33 @@
+{
+  "fault": "c05_cache_upgrade_crashes_on_startup",
+  "title": "Cache upgrade crashes on startup",
+  "kind": "custom",
+  "setup": "nano",
+  "service": "cache",
+  "category": "crash",
+  "error": null,
+  "seconds": 32.5,
+  "calls": 9,
+  "tokens_in": 27489,
+  "tokens_out": 7138,
+  "cost": 0.00336,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly identifies the Redis cache as the broken part, a startup\u2011failure crash due to a bad config, and traces it to the new deploy.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED",
+    "NOT FIXED"
+  ],
+  "options": 3,
+  "blocked": 0,
+  "root_cause": "A newly deployed Redis container with an invalid 'maxmemory-policy' configuration failed to start, breaking cache connectivity and causing API 503 errors that disrupt product searches.",
+  "truth": "A deploy upgraded Redis from 7.4 to 7.5; the new version refuses to start because the existing redis.conf uses a removed configuration directive, so the cache container crashes in a restart loop and the API cannot reach it.",
+  "check_first": "api container",
+  "restarts_not_needed": 1,
+  "moved_backup": null,
+  "grader_cost": 0.00059
+}

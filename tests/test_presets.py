@@ -7,6 +7,8 @@ these tests fail right away, instead of during the demo.
 """
 
 import copy
+import json
+from pathlib import Path
 
 import pytest
 
@@ -23,6 +25,13 @@ ALL_PRESETS = sorted(PRESETS)
 def test_preset_passes_the_validator(name):
     """Presets must follow the same rules as Ultra's custom faults."""
     assert validate_fault(copy.deepcopy(PRESETS[name])) == []
+
+
+def test_a_fault_with_damaged_data_is_rejected():
+    """26 Oct evaluation: a custom fault's database logs said "corrupted data"; no action can repair that."""
+    fault = json.loads((Path("results") / "eval_faults" / "c06_database_crash_during_checkpoint.json")
+                       .read_text(encoding="utf-8"))
+    assert any("damaged data or a failing disk" in problem for problem in validate_fault(fault))
 
 
 @pytest.mark.parametrize("name", ALL_PRESETS)

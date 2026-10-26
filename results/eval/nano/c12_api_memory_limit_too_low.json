@@ -1,0 +1,33 @@
+{
+  "fault": "c12_api_memory_limit_too_low",
+  "title": "API memory limit too low",
+  "kind": "custom",
+  "setup": "nano",
+  "service": "api",
+  "category": "memory",
+  "error": null,
+  "seconds": 108.2,
+  "calls": 9,
+  "tokens_in": 26066,
+  "tokens_out": 8427,
+  "cost": 0.00359,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the API container, memory OOM due to lowered limit.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED FOR NOW",
+    "FIXED"
+  ],
+  "options": 3,
+  "blocked": 0,
+  "root_cause": "The API container is killed by the OOM killer because its memory limit was reduced to 150\u202fMiB, which is insufficient for its workload, causing repeated restarts.",
+  "truth": "Someone lowered the api container's memory limit from 512MiB to 150MiB, below its normal working set of ~180MiB, so the kernel OOM killer repeatedly terminates it (exit code 137).",
+  "check_first": "docker logs <api_container_name> (or the container's log output in your monitoring tool)",
+  "restarts_not_needed": 3,
+  "moved_backup": null,
+  "grader_cost": 0.00033
+}

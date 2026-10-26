@@ -1,0 +1,33 @@
+{
+  "fault": "slow_db_chain",
+  "title": "Export job slows the database (chain)",
+  "kind": "preset",
+  "setup": "nano",
+  "service": "db",
+  "category": "config",
+  "error": null,
+  "seconds": 141.2,
+  "calls": 11,
+  "tokens_in": 29537,
+  "tokens_out": 7590,
+  "cost": 0.00359,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly identifies the database as the faulty component, labels the issue as a query timeout/slow query, and points to the newly added sales\u2011export job as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED",
+    "NOT FIXED"
+  ],
+  "options": 3,
+  "blocked": 0,
+  "root_cause": "The newly added sales-export scheduled job runs a heavy aggregation query that exceeds PostgreSQL's statement_timeout, causing API timeouts and 502 errors.",
+  "truth": "The new sales-export job was meant to run daily but runs every 5 minutes. Its huge export query keeps PostgreSQL busy, so the api's queries time out, its workers are killed, and nginx answers 502. web and api only show the effect.",
+  "check_first": "api",
+  "restarts_not_needed": 1,
+  "moved_backup": null,
+  "grader_cost": 0.00109
+}

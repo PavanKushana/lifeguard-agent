@@ -1,0 +1,32 @@
+{
+  "fault": "c08_database_oom_killed_no_restart_policy",
+  "title": "Database OOM killed, no restart policy",
+  "kind": "custom",
+  "setup": "nano",
+  "service": "db",
+  "category": "memory",
+  "error": null,
+  "seconds": 91.9,
+  "calls": 9,
+  "tokens_in": 23449,
+  "tokens_out": 7970,
+  "cost": 0.00332,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the PostgreSQL container as the faulty part, the memory/OOM problem, and the recent API deployment as the trigger.",
+  "fix": "NOT FIXED",
+  "option_results": [
+    "NOT FIXED",
+    "NOT FIXED"
+  ],
+  "options": 2,
+  "blocked": 1,
+  "root_cause": "The PostgreSQL container was OOM\u2011killed (signal 9) due to insufficient memory, which was triggered by the recent API deployment that increased query memory usage.",
+  "truth": "A new analytics endpoint in api 2.3.2 ran a massive query that pushed PostgreSQL over its 1 GB memory limit, causing the kernel to OOM-kill it. The database container has no restart policy, so it stayed down.",
+  "check_first": "db",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00049
+}

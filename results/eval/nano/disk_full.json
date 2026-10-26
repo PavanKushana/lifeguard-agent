@@ -1,0 +1,31 @@
+{
+  "fault": "disk_full",
+  "title": "Database disk full",
+  "kind": "preset",
+  "setup": "nano",
+  "service": "db",
+  "category": "disk",
+  "error": null,
+  "seconds": 155.4,
+  "calls": 9,
+  "tokens_in": 24756,
+  "tokens_out": 7749,
+  "cost": 0.00335,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the PostgreSQL disk full caused by the nightly backup job storing dumps on the same disk.",
+  "fix": "NOT FIXED",
+  "option_results": [
+    "NOT FIXED"
+  ],
+  "options": 1,
+  "blocked": 1,
+  "root_cause": "PostgreSQL disk filled to 100% because nightly backup job accumulated large backup files in /var/lib/postgresql/backups, leaving no free space and causing database errors that broke order processing.",
+  "truth": "The disk /var/lib/postgresql is 100% full because the new nightly backup job saves its dumps on the same disk, so PostgreSQL cannot write new data.",
+  "check_first": "Look at the api container logs (e.g., via docker logs or the logs viewer) for error traces from the Python app",
+  "restarts_not_needed": 1,
+  "moved_backup": "none moved",
+  "grader_cost": 0.00051
+}

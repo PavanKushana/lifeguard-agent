@@ -1,0 +1,33 @@
+{
+  "fault": "c13_web_server_oom_kill_without_restart",
+  "title": "Web server OOM kill without restart",
+  "kind": "custom",
+  "setup": "nano",
+  "service": "web",
+  "category": "crash",
+  "error": null,
+  "seconds": 187.3,
+  "calls": 17,
+  "tokens_in": 59136,
+  "tokens_out": 14480,
+  "cost": 0.00702,
+  "grade": "partly",
+  "where": true,
+  "what": true,
+  "why": false,
+  "reason": "Diagnosis correctly identifies the web container crash but omits the memory\u2011spike trigger that caused the OOM kill.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED",
+    "NOT FIXED"
+  ],
+  "options": 3,
+  "blocked": 0,
+  "root_cause": "The web container crashed with exit code 137, indicating it was OOM\u2011killed, which caused Nginx to fail to connect to the upstream and return \u201cconnection refused\u201d, making the site unreachable. This crash is the direct cause of the outage.",
+  "truth": "The web container was killed by the OOM killer due to a temporary memory spike, and because it has no restart policy, it remained stopped.",
+  "check_first": "web",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00063
+}

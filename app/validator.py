@@ -8,7 +8,8 @@ in code is checked here, in 3 groups:
 
 1. Shape: every part is there, with the right type. Otherwise the code that loads it would crash.
 2. Fits our server: only real containers, disks, URLs and fields, sensible numbers and times,
-   no repeated old changes, no words that give the answer away, log lines that don't contradict each other.
+   no repeated old changes, no words that give the answer away, no damaged data or failing disks
+   (nothing on the menu repairs those), log lines that don't contradict each other.
 3. Fair and fixable: the fault really breaks something, every image the fix needs is visible
    on the board, and we find a fix ourselves (actions from the menu, checked by safety.py),
    run it on a test server and get the verdict FIXED. If our code can't win, the agent can't either.
@@ -48,6 +49,13 @@ CHECK_PARAMS = {
 
 # Words that would tell the agent it's a game, or hand it the answer. "user-agent" is fine.
 GIVEAWAY = re.compile(r"root cause|hidden|simulat|scenario|(?<![\w-])agent\b", re.IGNORECASE)
+
+# Damaged data or a failing disk. No action on the menu can repair those, so the fault maker's rule 6
+# forbids them, but a prompt rule wasn't enough: an evaluation fault (26 Oct) had "read-only filesystem or
+# corrupted data" in its database logs, where a restart could only hope, and an agent that read those logs
+# right was graded "partly".
+UNFIXABLE = re.compile(r"corrupt|read-only file ?system|input/output error|\bI/O error|hardware|"
+                       r"page verification failed|bad block", re.IGNORECASE)
 
 # The tools add the time in front of every log line, so a line must not bring its own.
 STARTS_WITH_DATE = re.compile(r"^\W*\d{4}-\d{2}-\d{2}")
@@ -243,6 +251,13 @@ def check_giveaways(fault: dict) -> list[str]:
     """No visible text may hint that it's a game or name the answer outright."""
     return [f"'{text[:60]}' contains the word '{GIVEAWAY.search(text).group()}', which gives it away"
             for text in shown_texts(fault) if GIVEAWAY.search(text)]
+
+
+def check_unfixable(fault: dict) -> list[str]:
+    """No visible text may show damaged data or a failing disk: the actions on the menu can't repair those."""
+    return [f"'{text[:60]}' shows damaged data or a failing disk ('{UNFIXABLE.search(text).group()}'); "
+            "no action on the menu can repair that, so make a fault the actions can really fix"
+            for text in shown_texts(fault) if UNFIXABLE.search(text)]
 
 
 def check_times(fault: dict) -> list[str]:
@@ -469,7 +484,7 @@ def validate_fault(fault) -> list[str]:
 
     # The deeper checks run even if problems were found above, so Ultra hears about everything at once.
     try:
-        problems += check_giveaways(fault) + check_times(fault)
+        problems += check_giveaways(fault) + check_unfixable(fault) + check_times(fault)
         server = Server()
         apply_fault(server, fault)
         problems += check_server(server) + check_contradictions(fault, server)

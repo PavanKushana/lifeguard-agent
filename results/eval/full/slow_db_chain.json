@@ -1,0 +1,32 @@
+{
+  "fault": "slow_db_chain",
+  "title": "Export job slows the database (chain)",
+  "kind": "preset",
+  "setup": "full",
+  "service": "db",
+  "category": "config",
+  "error": null,
+  "seconds": 32.2,
+  "calls": 12,
+  "tokens_in": 37505,
+  "tokens_out": 3967,
+  "cost": 0.02263,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly identifies the db as the broken part, the overly frequent export job as the problem, and the recent cron addition as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "root_cause": "The sales-export cron job added 48 minutes ago runs a heavy COPY query every 5 minutes, driving PostgreSQL CPU to 97% and causing statement timeouts that cascade to API 500 errors and nginx 502 responses.",
+  "truth": "The new sales-export job was meant to run daily but runs every 5 minutes. Its huge export query keeps PostgreSQL busy, so the api's queries time out, its workers are killed, and nginx answers 502. web and api only show the effect.",
+  "check_first": "api container logs and health checks",
+  "restarts_not_needed": 1,
+  "moved_backup": null,
+  "grader_cost": 0.00075
+}

@@ -1,0 +1,105 @@
+{
+  "title": "Nginx misconfiguration after upgrade",
+  "alert": "Users see error messages on product pages while the home page loads.",
+  "truth": {
+    "service": "web",
+    "category": "deploy",
+    "root_cause": "The newly deployed nginx 1.28.0 version contains a misconfigured upstream that causes it to fail to connect to the API container, returning 502 errors for API requests.",
+    "fix": "Roll back the web container to the previous nginx 1.27 image, then verify that product pages load correctly."
+  },
+  "changes": {
+    "containers": {
+      "web": {
+        "image": "nginx:1.28.0",
+        "status": "running",
+        "restarts": 0,
+        "cpu_percent": 0.5,
+        "memory_mb": 25,
+        "memory_limit_mb": 256
+      }
+    },
+    "recent_changes": [
+      [
+        30,
+        "Deployed web nginx 1.28.0 (security patch)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 40
+      },
+      "http://localhost/api/health": {
+        "status": 502,
+        "ms": 60
+      }
+    },
+    "logs": {
+      "web": [
+        [
+          25,
+          "[error] 12#0: *456 connect() failed (111: Connection refused) while connecting to upstream, client: 172.18.0.1, server: _, request: \\\"GET /api/products HTTP/1.1\\\", upstream: \\\"172.18.0.2:8080\\\", host: \\\"localhost\\\""
+        ],
+        [
+          20,
+          "[error] 12#0: *457 connect() failed (111: Connection refused) while connecting to upstream, client: 172.18.0.1, server: _, request: \\\"GET /api/products HTTP/1.1\\\", upstream: \\\"172.18.0.2:8080\\\", host: \\\"localhost\\\""
+        ],
+        [
+          15,
+          "[error] 12#0: *458 connect() failed (111: Connection refused) while connecting to upstream, client: 172.18.0.1, server: _, request: \\\"GET /api/products HTTP/1.1\\\", upstream: \\\"172.18.0.2:8080\\\", host: \\\"localhost\\\""
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "api": 20
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "image",
+          "container": "web",
+          "is": "nginx:1.27"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "web",
+          "is": "nginx:1.27"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "web": {
+        "image": "nginx:1.27",
+        "status": "running",
+        "since_minutes_ago": 0,
+        "cpu_percent": 0.5,
+        "memory_mb": 25,
+        "memory_limit_mb": 256
+      }
+    },
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "web": [
+        [
+          0,
+          "172.18.0.1 - - \\\"GET /products HTTP/1.1\\\" 200 5123"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "a new nginx version for web returns errors"
+}

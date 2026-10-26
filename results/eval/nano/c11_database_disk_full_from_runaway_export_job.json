@@ -1,0 +1,32 @@
+{
+  "fault": "c11_database_disk_full_from_runaway_export_job",
+  "title": "Database disk full from runaway export job",
+  "kind": "custom",
+  "setup": "nano",
+  "service": "db",
+  "category": "disk",
+  "error": null,
+  "seconds": 92.8,
+  "calls": 10,
+  "tokens_in": 28610,
+  "tokens_out": 7572,
+  "cost": 0.00353,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the PostgreSQL disk being filled by the export cron job.",
+  "fix": "NOT FIXED",
+  "option_results": [
+    "NOT FIXED",
+    "NOT FIXED"
+  ],
+  "options": 2,
+  "blocked": 1,
+  "root_cause": "The data\u2011export cron job fills /var/lib/postgresql/exports, exhausting the PostgreSQL disk volume and causing write failures that result in order errors and export timeouts.",
+  "truth": "A new data export job runs every minute and writes large CSV files to /var/lib/postgresql/exports, filling the 50 GB database disk so PostgreSQL cannot write new data.",
+  "check_first": "api container logs",
+  "restarts_not_needed": 1,
+  "moved_backup": null,
+  "grader_cost": 0.00042
+}

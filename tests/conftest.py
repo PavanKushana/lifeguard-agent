@@ -3,7 +3,7 @@ conftest.py
 Shared test helpers (pytest finds this file by itself and hands its fixtures to every test file).
 
 no_real_telegram runs around every test by itself: tests never send real Telegram messages, even
-with a bot token and OWNER_CHAT_ID in .env.
+with a bot token and OWNER_CHAT_ID in .env. no_real_models does the same for Token Factory.
 
 ready_incident builds a broken server with a finished agent run, without any AI: the "agent's answer"
 is the fix our own code finds (validator.find_fix), so deciding on it gives a real verdict, real
@@ -12,7 +12,7 @@ recovery logs and a real postmortem.
 
 import pytest
 
-from app import telegram_bot
+from app import llm, scoreboard, telegram_bot
 from app.faults import PRESETS, apply_fault
 from app.llm import Usage
 from app.sessions import Incident, Session, get_or_create
@@ -32,6 +32,20 @@ def no_real_telegram(monkeypatch):
     monkeypatch.setattr(telegram_bot, "call", lambda method, **params: None)
     monkeypatch.setattr(telegram_bot, "send_document", lambda chat_id, filename, content, caption: None)
     monkeypatch.setattr(telegram_bot, "in_background", lambda function, *args: function(*args))
+
+
+@pytest.fixture(autouse=True)
+def no_real_models(monkeypatch, tmp_path):
+    """No test ever calls Token Factory (it costs money and needs the internet): a test that tries fails loudly.
+
+    Tests that need a model answer replace ask() with a fake. The Stump the Agent scoreboard writes to a
+    temporary file, so tests never touch the real one.
+    """
+    def refuse(options):
+        raise RuntimeError(f"a test tried to call Token Factory ({options.get('model')}); use a fake ask()")
+
+    monkeypatch.setattr(llm, "create_with_patience", refuse)
+    monkeypatch.setattr(scoreboard, "DB_PATH", tmp_path / "scoreboard.sqlite")
 
 
 @pytest.fixture

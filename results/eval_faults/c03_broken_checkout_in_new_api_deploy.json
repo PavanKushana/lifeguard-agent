@@ -1,0 +1,181 @@
+{
+  "title": "Broken checkout in new API deploy",
+  "alert": "Customers can browse products, but placing an order fails with a 500 error. The issue started about an hour ago.",
+  "truth": {
+    "service": "api",
+    "category": "deploy",
+    "root_cause": "api 2.3.2 introduced a regression in the order creation logic: a missing null check on the payment_token field causes an unhandled AttributeError on POST /api/orders, while read endpoints like /api/products still work.",
+    "fix": "Roll back api to 2.3.1, then verify orders complete successfully. Long term: add a test for the payment_token null case."
+  },
+  "changes": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.2",
+        "since_minutes_ago": 55,
+        "restarts": 0,
+        "cpu_percent": 5.0,
+        "memory_mb": 185,
+        "memory_limit_mb": 512
+      }
+    },
+    "recent_changes": [
+      [
+        55,
+        "Deployed api 2.3.2 (refactor order validation)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 45
+      },
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 68
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          55,
+          "INFO Starting shopapp api 2.3.2"
+        ],
+        [
+          52,
+          "ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)"
+        ],
+        [
+          45,
+          "ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)"
+        ],
+        [
+          38,
+          "ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)"
+        ],
+        [
+          22,
+          "ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)"
+        ],
+        [
+          15,
+          "ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)"
+        ],
+        [
+          8,
+          "ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)"
+        ],
+        [
+          3,
+          "ERROR POST /api/orders 500: 'NoneType' object has no attribute 'strip' (order.py:142)"
+        ]
+      ],
+      "web": [
+        [
+          52,
+          "172.18.0.1 - - \"POST /api/orders HTTP/1.1\" 500 1842"
+        ],
+        [
+          45,
+          "172.18.0.1 - - \"POST /api/orders HTTP/1.1\" 500 1842"
+        ],
+        [
+          38,
+          "172.18.0.1 - - \"POST /api/orders HTTP/1.1\" 500 1842"
+        ],
+        [
+          30,
+          "172.18.0.1 - - \"POST /api/orders HTTP/1.1\" 500 1842"
+        ],
+        [
+          22,
+          "172.18.0.1 - - \"POST /api/orders HTTP/1.1\" 500 1842"
+        ],
+        [
+          15,
+          "172.18.0.1 - - \"POST /api/orders HTTP/1.1\" 500 1842"
+        ],
+        [
+          8,
+          "172.18.0.1 - - \"POST /api/orders HTTP/1.1\" 500 1842"
+        ],
+        [
+          3,
+          "172.18.0.1 - - \"POST /api/orders HTTP/1.1\" 500 1842"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "api": 55
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.1",
+        "status": "running",
+        "since_minutes_ago": 0,
+        "cpu_percent": 4.0,
+        "memory_mb": 180,
+        "memory_limit_mb": 512
+      }
+    },
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 50
+      },
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          0,
+          "INFO Starting shopapp api 2.3.1"
+        ],
+        [
+          12,
+          "INFO POST /api/orders 201: Order created (order.py:142)"
+        ],
+        [
+          25,
+          "INFO POST /api/orders 201: Order created (order.py:142)"
+        ]
+      ],
+      "web": [
+        [
+          10,
+          "172.18.0.1 - - \"POST /api/orders HTTP/1.1\" 201 1240"
+        ],
+        [
+          22,
+          "172.18.0.1 - - \"POST /api/orders HTTP/1.1\" 201 1180"
+        ]
+      ]
+    }
+  },
+  "id": "c03_broken_checkout_in_new_api_deploy",
+  "idea": "a new api version breaks some pages"
+}

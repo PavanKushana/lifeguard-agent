@@ -1,0 +1,32 @@
+{
+  "fault": "c11_database_disk_full_from_runaway_export_job",
+  "title": "Database disk full from runaway export job",
+  "kind": "custom",
+  "setup": "super",
+  "service": "db",
+  "category": "disk",
+  "error": null,
+  "seconds": 28.2,
+  "calls": 12,
+  "tokens_in": 27654,
+  "tokens_out": 4358,
+  "cost": 0.01222,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly points to the PostgreSQL disk being filled by the continuous export job.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "root_cause": "The continuously running export job writes large CSV files to the PostgreSQL data volume, filling /var/lib/postgresql to 100% usage and causing PostgreSQL to fail with 'No space left on device' errors, which leads to order processing failures and admin export timeouts.",
+  "truth": "A new data export job runs every minute and writes large CSV files to /var/lib/postgresql/exports, filling the 50 GB database disk so PostgreSQL cannot write new data.",
+  "check_first": "Check the db container logs and performance metrics (e.g., pg_stat_activity, CPU/disk I/O).",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00036
+}

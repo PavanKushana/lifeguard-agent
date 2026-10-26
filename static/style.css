@@ -770,6 +770,28 @@ pre {
 .proof li { color: var(--muted); }
 .proof li.success { color: var(--ok); font-weight: 650; }
 .proof li.success::marker { content: "✓  "; }
+/* Stump the Agent: the hidden truth next to the agent's answer, after the decision. */
+.stump {
+  margin-top: 12px; padding: 16px 18px; border-radius: 16px;
+  background: color-mix(in srgb, var(--agent) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--agent) 26%, transparent);
+}
+.stump-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.stump-head .label { font-size: 0.7rem; font-weight: 750; color: var(--muted-2); text-transform: uppercase; letter-spacing: 0.1em; }
+.stump-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+.stump-title { font-weight: 650; font-size: 0.9rem; }
+.stump-grid p { margin: 6px 0 0; font-size: 0.92rem; }
+.stump > p.muted { margin: 12px 0 0; }
+.grade { display: inline-flex; align-items: center; padding: 3px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 750;
+         background: var(--inset); border: 1px solid var(--line-strong); color: var(--muted); }
+.grade.right { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.grade.partly { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.grade.wrong { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+.grade .spinner { width: 11px; height: 11px; }
+/* The scoreboard line under "Try to stump the agent". */
+.stump-line { margin: 8px 0 0; }
+@media (max-width: 640px) { .stump-grid { grid-template-columns: 1fr; } }
+
 /* The postmortem links look like buttons: they're the last thing a visitor does. */
 .links { display: flex; gap: 10px; flex-wrap: wrap; }
 .links a {

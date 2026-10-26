@@ -1,0 +1,32 @@
+{
+  "fault": "db_out_of_memory",
+  "title": "Database out of memory",
+  "kind": "preset",
+  "setup": "full",
+  "service": "db",
+  "category": "memory",
+  "error": null,
+  "seconds": 25.6,
+  "calls": 11,
+  "tokens_in": 27261,
+  "tokens_out": 3614,
+  "cost": 0.01844,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly points to the PostgreSQL db, the memory\u2011limit/OOM problem, and the API 2.4.0 deployment as the cause.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED FOR NOW"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "root_cause": "The deployment of API version 2.4.0 introduced a heavyweight sales report query that causes PostgreSQL to exceed its 1024\u202fMB memory limit, triggering the host OOM killer (signal\u202f9) and repeated database process kills, which in turn produce 503 errors for the web frontend.",
+  "truth": "api 2.4.0 added a sales report query that makes PostgreSQL use more than its 1 GB memory limit, so it is killed (out of memory, signal 9) and keeps restarting.",
+  "check_first": "web container",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00045
+}

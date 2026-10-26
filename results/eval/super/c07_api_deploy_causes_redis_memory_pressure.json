@@ -1,0 +1,32 @@
+{
+  "fault": "c07_api_deploy_causes_redis_memory_pressure",
+  "title": "API deploy causes Redis memory pressure",
+  "kind": "custom",
+  "setup": "super",
+  "service": "api",
+  "category": "deploy",
+  "error": null,
+  "seconds": 24.4,
+  "calls": 11,
+  "tokens_in": 25190,
+  "tokens_out": 2903,
+  "cost": 0.01017,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the API deployment as the cause of excessive Redis writes leading to BGSAVE latency.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "root_cause": "The API version 2.3.2, deployed one hour ago, writes significantly more session data to Redis, causing a high write rate that triggers frequent Redis BGSAVE operations. These background saves consume CPU and add latency to cache reads/writes, making the shop feel slow.",
+  "truth": "API 2.3.2 deployed this morning writes large cart objects to Redis, filling its 256 MB limit and forcing frequent blocking RDB saves that add hundreds of ms to every cache call.",
+  "check_first": "db",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00091
+}

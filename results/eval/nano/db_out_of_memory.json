@@ -1,0 +1,33 @@
+{
+  "fault": "db_out_of_memory",
+  "title": "Database out of memory",
+  "kind": "preset",
+  "setup": "nano",
+  "service": "db",
+  "category": "memory",
+  "error": null,
+  "seconds": 128.4,
+  "calls": 10,
+  "tokens_in": 28598,
+  "tokens_out": 7431,
+  "cost": 0.0035,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The engineer correctly identified PostgreSQL as the failing component, described an OOM/memory issue, and traced it to the api 2.4.0 deployment adding a heavy query.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED FOR NOW",
+    "NOT FIXED"
+  ],
+  "options": 3,
+  "blocked": 0,
+  "root_cause": "The April 26 deployment of api 2.4.0 introduced a query that overloaded PostgreSQL, causing memory usage to hit ~98% and OOM kills, which restarted the DB and broke connections, leading to sales\u2011report errors and shop outages.",
+  "truth": "api 2.4.0 added a sales report query that makes PostgreSQL use more than its 1 GB memory limit, so it is killed (out of memory, signal 9) and keeps restarting.",
+  "check_first": "api",
+  "restarts_not_needed": 3,
+  "moved_backup": null,
+  "grader_cost": 0.00041
+}

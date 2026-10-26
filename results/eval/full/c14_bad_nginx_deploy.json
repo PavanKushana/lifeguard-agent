@@ -1,0 +1,31 @@
+{
+  "fault": "c14_bad_nginx_deploy",
+  "title": "Bad nginx deploy",
+  "kind": "custom",
+  "setup": "full",
+  "service": "web",
+  "category": "deploy",
+  "error": null,
+  "seconds": 36.8,
+  "calls": 13,
+  "tokens_in": 37937,
+  "tokens_out": 5338,
+  "cost": 0.02646,
+  "grade": "partly",
+  "where": true,
+  "what": false,
+  "why": true,
+  "reason": "Both blame the nginx 1.28 deploy, but the engineer cites a timeout misconfiguration rather than the 500\u2011error regression.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 0,
+  "root_cause": "The nginx:1.28 security update deployed at 2026-10-26 12:54:22 reduced or removed the proxy_read_timeout setting, causing nginx to abort upstream API requests with 'upstream timed out (110: Connection timed out) while reading response header from upstream' errors, even though the API responds normally in ~42ms.",
+  "truth": "The new nginx version 1.28 introduced a regression that causes it to return 500 Internal Server Error for all requests.",
+  "check_first": "api",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00065
+}

@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import telegram_bot
+from app import scoreboard, telegram_bot
 from app.fault_maker import make_fault, random_idea
 from app.faults import PRESETS, apply_fault
 from app.guard import check_fault_text
@@ -380,7 +380,18 @@ def incident_view(incident: Incident) -> dict:
         view["outcome"] = outcome(incident)
         view["proof_lines"] = proof_lines(incident.proof)
         view["checks"] = {key: incident.verification[key] for key in ("users_ok", "stays_fixed", "warnings")}
+        # Stump the Agent: only now, after the decision, the hidden truth and how the agent's answer did.
+        # Never earlier: the person deciding must not know the answer either. The grade can still be
+        # None for a few seconds while it's worked out; the page asks again.
+        view["truth"] = incident.truth
+        view["grade"] = incident.grade
     return view
+
+
+@app.get("/stump")
+def stump_score() -> dict:
+    """Stump the Agent's scoreboard: of the visitors' own problems, how many the agent got right."""
+    return scoreboard.score()
 
 
 @app.post("/investigate")

@@ -1,0 +1,175 @@
+{
+  "title": "Root disk full from unrotated debug logs",
+  "alert": "Customers see '500 Internal Server Error' on product pages; the shop homepage loads but any dynamic request fails.",
+  "truth": {
+    "service": "web",
+    "category": "disk",
+    "root_cause": "A new cron job 'collect-debug-logs' was added two days ago. It writes verbose debug output to /var/log/shop/debug.log but the logrotate config was not updated for this file, so the log grows unbounded. The root disk (/) reached 97% used, leaving no space for nginx to write its access log or for the api container to write its log, causing 500 errors on all dynamic requests.",
+    "fix": "Move the oversized debug log from /var/log/shop/debug.log to the postgresql disk (which has 31.6 GB free), update logrotate to include this file, and disable the collect-debug-logs job until the log rotation is fixed. Then verify product pages return 200 again."
+  },
+  "changes": {
+    "disks": {
+      "/": {
+        "used_gb": 29.1
+      }
+    },
+    "files": [
+      [
+        "/var/log/shop/debug.log",
+        17.5,
+        2880
+      ]
+    ],
+    "jobs": [
+      {
+        "name": "collect-debug-logs",
+        "schedule": "every 10 minutes",
+        "command": "docker exec api python -m debug_dump >> /var/log/shop/debug.log 2>&1",
+        "last_run_minutes_ago": 10
+      }
+    ],
+    "recent_changes": [
+      [
+        2880,
+        "Added collect-debug-logs cron job (writes api debug dump to /var/log/shop/debug.log)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 45
+      },
+      "http://localhost/api/health": {
+        "status": 500,
+        "ms": 12
+      }
+    },
+    "logs": {
+      "web": [
+        [
+          15,
+          "172.18.0.1 - - \"GET /api/products HTTP/1.1\" 500 612"
+        ],
+        [
+          13,
+          "172.18.0.1 - - \"GET /api/products HTTP/1.1\" 500 612"
+        ],
+        [
+          11,
+          "172.18.0.1 - - \"GET /api/products HTTP/1.1\" 500 612"
+        ],
+        [
+          9,
+          "172.18.0.1 - - \"GET /api/products HTTP/1.1\" 500 612"
+        ],
+        [
+          7,
+          "172.18.0.1 - - \"GET /api/products HTTP/1.1\" 500 612"
+        ],
+        [
+          5,
+          "172.18.0.1 - - \"GET /api/products HTTP/1.1\" 500 612"
+        ],
+        [
+          3,
+          "172.18.0.1 - - \"GET /api/products HTTP/1.1\" 500 612"
+        ],
+        [
+          1,
+          "172.18.0.1 - - \"GET /api/products HTTP/1.1\" 500 612"
+        ]
+      ],
+      "api": [
+        [
+          15,
+          "ERROR GET /api/products 500: failed to write log entry: No space left on device"
+        ],
+        [
+          13,
+          "ERROR GET /api/products 500: failed to write log entry: No space left on device"
+        ],
+        [
+          11,
+          "ERROR GET /api/products 500: failed to write log entry: No space left on device"
+        ],
+        [
+          9,
+          "ERROR GET /api/products 500: failed to write log entry: No space left on device"
+        ],
+        [
+          7,
+          "ERROR GET /api/products 500: failed to write log entry: No space left on device"
+        ],
+        [
+          5,
+          "ERROR GET /api/products 500: failed to write log entry: No space left on device"
+        ],
+        [
+          3,
+          "ERROR GET /api/products 500: failed to write log entry: No space left on device"
+        ],
+        [
+          1,
+          "ERROR GET /api/products 500: failed to write log entry: No space left on device"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "web": 20,
+      "api": 20
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "disk_free_gb",
+          "mount": "/",
+          "at_least": 1.0
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "job_enabled",
+          "job": "collect-debug-logs",
+          "is": false
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "disks": {
+      "/": {
+        "used_gb": 11.6
+      }
+    },
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 40
+      },
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "web": [
+        [
+          0,
+          "172.18.0.1 - - \"GET /api/products HTTP/1.1\" 200 5123"
+        ]
+      ],
+      "api": [
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ]
+    }
+  },
+  "id": "c02_root_disk_full_from_unrotated_debug_logs",
+  "idea": "a cron job fills the log folder until the disk is full"
+}

@@ -52,6 +52,11 @@ class Incident:
     verification: dict | None = None
     # After a fix that worked: the new log lines that show it, e.g. "api: INFO POST /api/orders 201 in 58ms".
     proof: list[str] = field(default_factory=list)
+    # Stump the Agent: the fault's hidden truth (title, broken part, root cause, fix), kept with the incident
+    # but sent to the page only after the human's decision; and how the agent's answer did against it
+    # (grader.py), worked out in the background once the agent is done.
+    truth: dict | None = None
+    grade: dict | None = None
 
     def add_step(self, kind: str, text: str) -> None:
         """Record one step of the agent. Passed to the agent as its on_step, like print_step in the terminal."""

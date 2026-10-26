@@ -1,0 +1,31 @@
+{
+  "fault": "bad_deploy",
+  "title": "API crashes after a deploy",
+  "kind": "preset",
+  "setup": "super",
+  "service": "api",
+  "category": "deploy",
+  "error": null,
+  "seconds": 19.2,
+  "calls": 9,
+  "tokens_in": 21308,
+  "tokens_out": 2900,
+  "cost": 0.009,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly identifies the API component, the missing package due to the new deploy, and the deploy as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 0,
+  "root_cause": "The API container crashes on start\u2011up because the newly deployed image shopapp/api:2.3.2 is missing the pydantic-settings Python package, causing a ModuleNotFoundError. Nginx receives no backend replies and returns 502 Bad Gateway to users.",
+  "truth": "api 2.3.2 imports the pydantic_settings library, but it isn't installed in the image, so the app crashes on start (exit code 1) and Docker keeps restarting it.",
+  "check_first": "api",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00054
+}

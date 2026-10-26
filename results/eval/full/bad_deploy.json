@@ -1,0 +1,31 @@
+{
+  "fault": "bad_deploy",
+  "title": "API crashes after a deploy",
+  "kind": "preset",
+  "setup": "full",
+  "service": "api",
+  "category": "deploy",
+  "error": null,
+  "seconds": 24.0,
+  "calls": 9,
+  "tokens_in": 20834,
+  "tokens_out": 3376,
+  "cost": 0.01571,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the API container, missing pydantic_settings due to the new deploy as cause.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 0,
+  "root_cause": "The API container crashes on startup because the newly deployed image 2.3.2 imports `pydantic_settings`, which is not installed in the container's Python environment. This causes the API to be unavailable, leading to 502 errors from the web (nginx) container.",
+  "truth": "api 2.3.2 imports the pydantic_settings library, but it isn't installed in the image, so the app crashes on start (exit code 1) and Docker keeps restarting it.",
+  "check_first": "api",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00058
+}

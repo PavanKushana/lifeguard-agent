@@ -204,12 +204,14 @@
           <!-- app.js puts one button per preset in here (from GET /presets). -->
           <div id="presets" class="buttons"></div>
 
-          <h3>Describe your own</h3>
+          <!-- Stump the Agent: the visitor's own problem. The scoreboard line under it comes from GET /stump. -->
+          <h3>Try to stump the agent</h3>
           <form id="custom-form" class="custom">
             <input id="custom-idea" maxlength="300" autocomplete="off" aria-label="Describe a problem"
                    placeholder="for example: the cache runs out of memory">
             <button type="submit">Break it</button>
           </form>
+          <p id="stump-score" class="muted stump-line"></p>
 
           <h3>Can't decide?</h3>
           <button id="random" type="button" class="secondary">Pick one for me</button>
@@ -298,6 +300,8 @@
           <div id="verdict" class="verdict"></div>
           <!-- After a fix that worked: the new log lines that prove it (e.g. an order going through). -->
           <div id="proof" class="proof" hidden></div>
+          <!-- Stump the Agent: after the decision, the hidden truth next to the agent's answer, with its grade. -->
+          <div id="stump" class="stump" hidden></div>
           <div id="verdict-details" class="verdict-details"></div>
           <p class="links">
             <a href="/postmortem" target="_blank" rel="noopener">Read the postmortem</a>

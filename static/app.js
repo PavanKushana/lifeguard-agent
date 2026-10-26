@@ -654,6 +654,9 @@ function clearAgent() {
   document.getElementById("next-decide").hidden = true;
   document.getElementById("decide-panel").hidden = true;
   document.getElementById("result-panel").hidden = true;
+  document.getElementById("stump").hidden = true;
+  clearInterval(gradeTimer);
+  gradeTimer = null;
   updateAgentPanel();
   updateStepper();
 }
@@ -1053,6 +1056,7 @@ function renderResult(view) {
     : "";
   document.getElementById("verdict-details").innerHTML = details ? folded("How the server checked it", details) : "";
   renderProof(view.proof_lines || []);
+  renderStump(view);
   document.getElementById("result-panel").hidden = false;
 }
 
@@ -1068,6 +1072,91 @@ function renderProof(lines) {
 }
 
 document.getElementById("reject").addEventListener("click", (event) => confirmThen(event.currentTarget, 0));
+
+
+// ---------- Stump the Agent ----------
+
+/** The scoreboard line under "Try to stump the agent": how the agent did on visitors' own problems. */
+async function loadStumpScore() {
+  const line = document.getElementById("stump-score");
+  try {
+    const score = await api("GET", "/stump");
+    line.textContent = score.total
+      ? `Visitors' own problems since the last update: the agent found the cause in ${score.solved} of ${score.total}` +
+        (score.partly ? `, and was partly right in ${score.partly} more.` : ".")
+      : "Describe any problem in your own words. The agent has to find it like a real one.";
+  } catch {
+    line.textContent = "";  // the scoreboard is extra: without it the page works the same
+  }
+}
+
+// What each grade is called on the page. A missed visitor's own problem gets its own words below.
+const GRADE_WORDS = { right: "Found the cause", partly: "Partly right", wrong: "Missed it" };
+// Asks again for the grade while the server works it out (a few seconds after the agent finished).
+let gradeTimer = null;
+
+/**
+ * After the decision: the fault's hidden truth next to what the agent said, with the grade from
+ * grader.py (right part, right problem, right trigger), whether its recommended fix really worked
+ * (tried on a copy of the server), and what the incident cost. Never before the decision: the person
+ * deciding must not know the answer either (the server only sends the truth after it).
+ */
+function renderStump(view) {
+  const box = document.getElementById("stump");
+  const truth = view.truth;
+  if (!truth) {
+    box.hidden = true;
+    return;
+  }
+  const own = truth.kind === "custom";  // the visitor's own problem: did they stump it?
+  const graded = view.grade;
+  let badge = `<span class="grade pending"><span class="spinner"></span>Checking the answer</span>`;
+  let reason = "";
+  if (graded && graded.grade) {
+    badge = `<span class="grade ${graded.grade}">${graded.grade === "wrong" && own ? "You stumped it!" : GRADE_WORDS[graded.grade]}</span>`;
+    reason = graded.reason || "";
+  } else if (graded) {
+    badge = `<span class="grade">Not graded</span>`;
+    reason = graded.reason || "";
+  }
+  const said = view.final_call ? view.final_call.root_cause : "No usable answer.";
+  const fix = graded && graded.fix
+    ? ` Its recommended fix, tried on a copy of the server: <strong>${escapeHtml(graded.fix)}</strong>.` : "";
+  const cost = view.cost ? ` This incident: ${escapeHtml(view.cost)}.` : "";
+  box.innerHTML = `
+    <div class="stump-head"><span class="label">${own ? "Did you stump the agent?" : "The hidden truth"}</span>${badge}</div>
+    <div class="stump-grid">
+      <div><div class="stump-title">What really happened <span class="muted">(the agent never saw this)</span></div>
+        <p>${escapeHtml(truth.root_cause)}</p></div>
+      <div><div class="stump-title">What the agent said</div><p>${escapeHtml(said)}</p></div>
+    </div>
+    <p class="muted">${escapeHtml(reason)}${fix}${cost}</p>`;
+  box.hidden = false;
+  if (!graded) waitForGrade();
+  else loadStumpScore();  // a visitor's own problem was just counted
+}
+
+/** Ask the server again every 3 s for the grade, for up to a minute, then show it. */
+function waitForGrade() {
+  if (gradeTimer) return;
+  let tries = 0;
+  gradeTimer = setInterval(async () => {
+    tries += 1;
+    let view;
+    try {
+      view = await api("GET", "/incident");
+    } catch {
+      view = null;  // reset in another tab, or the server restarted: stop asking
+    }
+    if (view && !view.grade && tries < 20) return;
+    clearInterval(gradeTimer);
+    gradeTimer = null;
+    if (!view || !view.verdict) return;
+    if (!view.grade) view.grade = { grade: null, reason: "The grade didn't arrive in time." };
+    state.incident = view;
+    renderStump(view);
+  }, 3000);
+}
 
 
 // ---------- The four steps (tabs) ----------
@@ -1180,6 +1269,7 @@ function setupThemeSwitch() {
 /** When the page opens: buttons, the dashboard, and anything still going on from before a reload. */
 async function start() {
   setupThemeSwitch();
+  loadStumpScore();
   await loadPresets().catch((error) => showBreakMessage(escapeHtml(error.message), "bad"));
   // The incident first: the dashboard needs its verdict to show a fixed alert as resolved.
   await followIncident();

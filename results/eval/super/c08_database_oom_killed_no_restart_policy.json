@@ -1,0 +1,32 @@
+{
+  "fault": "c08_database_oom_killed_no_restart_policy",
+  "title": "Database OOM killed, no restart policy",
+  "kind": "custom",
+  "setup": "super",
+  "service": "db",
+  "category": "memory",
+  "error": null,
+  "seconds": 22.6,
+  "calls": 10,
+  "tokens_in": 22455,
+  "tokens_out": 3113,
+  "cost": 0.00954,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the db as the failing component, a memory\u2011limit/OOM problem, and the new analytics endpoint as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "root_cause": "The new analytics endpoint in API version 2.3.2 caused a PostgreSQL query that exceeded the db container's memory limit, triggering the Linux OOM killer (signal 9) and stopping the database at 12:50:17. With the database unavailable, the API returns 503 for any DB\u2011dependent request.",
+  "truth": "A new analytics endpoint in api 2.3.2 ran a massive query that pushed PostgreSQL over its 1 GB memory limit, causing the kernel to OOM-kill it. The database container has no restart policy, so it stayed down.",
+  "check_first": "db",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00051
+}

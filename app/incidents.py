@@ -17,9 +17,11 @@ import logging
 import re
 import threading
 
+from app import scoreboard
 from app.agent import format_step, handle_incident
 from app.approval import approve_option
 from app.fixes import apply_fix, verify
+from app.grader import grade
 from app.llm import describe_error
 from app.postmortem import build_postmortem
 from app.sessions import Incident, Session
@@ -80,7 +82,10 @@ def start_investigation(session: Session) -> Incident:
     The spending limit is checked by the caller first (it knows the visitor's address).
     """
     check_can_investigate(session)
-    session.incident = incident = Incident(alert=session.fault["alert"])
+    fault = session.fault
+    session.incident = incident = Incident(alert=fault["alert"],
+                                           truth={"title": fault.get("title", ""), "kind": session.fault_name,
+                                                  **fault["truth"]})
     # daemon=True: if the API stops, it doesn't wait for a half-finished agent.
     threading.Thread(target=run_agent, args=(session, incident), daemon=True).start()
     emit("started", session, incident)
@@ -104,8 +109,26 @@ def run_agent(session: Session, incident: Incident) -> None:
         return
     if incident.state == "done" and incident.result.get("final"):
         emit("options", session, incident)
+        grade_incident(session, incident)  # after the options went out, so nobody waits for it
     else:
         emit("failed", session, incident)
+
+
+def grade_incident(session: Session, incident: Incident) -> None:
+    """Stump the Agent: grade the agent's answer against the hidden truth (grader.py).
+
+    The grade is kept on the incident and shown only after the decision. A visitor's own problem
+    (a custom fault) also goes on the scoreboard. If grading fails, the incident goes on without it.
+    """
+    fault = session.fault
+    try:
+        incident.grade = grade(fault, incident.result["final"])
+    except Exception:
+        log.exception("Grading the answer failed")
+        incident.grade = {"grade": None, "reason": "The answer couldn't be graded this time."}
+        return
+    if session.incident is incident and session.fault_name == "custom" and incident.grade.get("grade"):
+        scoreboard.record(incident.grade["grade"], fault.get("title", ""))
 
 
 def decide_incident(session: Session, option: int, approved_by: str) -> dict:

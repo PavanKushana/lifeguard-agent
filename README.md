@@ -43,6 +43,9 @@ first investigation for them and shows every step, so they can trust (or questio
   the shop (customers, web, api, database, cache) shows where it hurts and which part the agent is checking.
 - **Decide:** the fix options as cards, with risk, undo steps and anything the safety check blocked.
 - **Result:** the verdict, the proof from the server's logs, and the postmortem to read or download.
+- **Try to stump the agent:** after your decision the hidden answer is shown next to the agent's, with a
+  grade (found the cause, partly right, or missed it). Problems typed by visitors go on a small
+  scoreboard: "the agent solved X of Y problems typed by visitors".
 - One step on screen at a time, light and dark theme, smooth scrolling, and on phones a tab bar at the
   bottom like an app.
 
@@ -82,6 +85,31 @@ The agent can also page you on Telegram, like an on-call pager:
 - **Spending limit on the public demo:** per visitor 8 AI runs an hour and 25 a day, everyone together
   40 an hour and 100 a day, so nobody can use up the AI credit.
 
+## Does it work? The evaluation
+20 faults: the 6 presets and 14 faults Ultra built from short ideas ([results/eval_faults/](results/eval_faults/)).
+Every fault ran once per setup. Each answer was graded against the
+fault's hidden truth by the same grader (right part, right problem, right trigger), and every offered fix was
+tried on a copy of the broken server.
+
+| Setup | Right cause | Partly right | Wrong | Recommended fix works | Offered fixes that work | Avg time | Avg cost |
+|---|---|---|---|---|---|---|---|
+| Nano + Super + Ultra (the demo) | 15 of 20 | 5 | 0 | 20 of 20 | 26 of 30 | 29 s | $0.022 |
+| Super alone | 16 of 20 | 4 | 0 | 20 of 20 | 27 of 34 | 24 s | $0.011 |
+| Nano alone | 15 of 20 | 5 | 0 | 16 of 20 | 21 of 47 | 132 s | $0.004 |
+
+What it shows:
+- **The cause:** no setup got a fault completely wrong. "Partly" mostly means the right part and the right
+  problem, but a different trigger. For example, all three blamed a one-off Redis crash on an upgrade from
+  9 days earlier.
+- **The fix:** with Super or Ultra writing the options, every recommended fix worked on the server.
+  Nano alone found causes as often, but 4 of its recommended fixes didn't work.
+- **The team vs Super alone:** on this set the 3-model team was not more accurate than Super alone, which was
+  faster and cost half as much. Ultra's options were a little more reliable (87% worked against 79%), but with
+  20 faults that's too small to claim much. More faults and repeated runs come before any change to the demo.
+- Costs are estimates from list prices. The whole evaluation (60 runs plus grading) cost about $0.79.
+
+Full report, fault by fault, with the quirks and limits: [results/eval_2026-10-26.md](results/eval_2026-10-26.md).
+
 ## Status
 - [x] Nemotron on Token Factory working, 4 models compared ([results](results/))
 - [x] Simulated server: 4 containers, disks with files, scheduled jobs, 6 preset faults
@@ -93,7 +121,8 @@ The agent can also page you on Telegram, like an on-call pager:
 - [x] Docker image, tests on GitHub Actions on every push
 - [x] Live demo on [lifeguard-agent.com](https://lifeguard-agent.com) (Render, deploys only after the tests pass)
 - [x] Phone alerts with Telegram: alert, fix options and two-tap approval on the phone, QR code linking
-- [ ] Evaluation on 20 faults
+- [x] Evaluation on 20 faults with 3 model setups ([below](#does-it-work-the-evaluation))
+- [x] Try to stump the agent: hidden answer, grade and visitor scoreboard on the page
 
 ## Try it
 Tested with Python 3.13.
@@ -153,9 +182,16 @@ write characters the Windows console can't print by default.
 ```bash
 python -m pytest -q
 ```
-The tests cover the parts without AI: safety checks, fixes, presets, the guard's rules, the spending limit
-and the Telegram pager (with a fake Telegram, so no real messages are sent).
+The tests cover the parts without AI: safety checks, fixes, presets, the guard's rules, the spending limit,
+the grader and the
+Telegram pager (with a fake Telegram, so no real messages are sent).
 GitHub runs them on every push, and also builds and starts the Docker image.
+
+### 5. The evaluation
+```bash
+python -m scripts.run_eval full      # also: nano, super (each takes 10-60 minutes)
+python -m scripts.run_eval report    # writes results/eval_<date>.md
+```
 
 ## What a run ends with
 The end of a real disk_full run on 21 Oct (full run: `results/runs/2026-10-21_1853_disk_full.txt`):
@@ -193,6 +229,8 @@ app/
   validator.py    checks a built fault in code before anyone sees it
   guard.py        checks typed fault ideas (rules, then Nano)
   tools.py        the read-only tools the agent can call
+  grader.py       grades the agent's answer against the hidden truth (evaluation, Stump the Agent)
+  scoreboard.py   the visitor scoreboard for Stump the Agent
   web_search.py   Tavily search, and the source link check
   llm.py          every call to Nemotron on Token Factory, with retries, time and token counts
   agent.py        triage, investigation, final call
@@ -206,8 +244,8 @@ static/           the web page: index.html, style.css, app.js (the demo)
   vendor/         our own copies of three.js, GSAP and Lenis (no outside CDN)
   fonts/, brand/  the Inter font and the logo
 tests/            pytest tests for the parts without AI
-scripts/          run_incident.py, try_simulator.py and earlier experiments
-results/          saved runs, postmortems and test results
+scripts/          run_incident.py, run_eval.py, try_simulator.py and earlier experiments
+results/          saved runs, postmortems, the evaluation and test results
 Dockerfile        the image the live demo runs
 render.yaml       how Render hosts the demo (deploys only after the tests pass)
 ```

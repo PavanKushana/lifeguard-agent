@@ -1,0 +1,31 @@
+{
+  "fault": "c05_cache_upgrade_crashes_on_startup",
+  "title": "Cache upgrade crashes on startup",
+  "kind": "custom",
+  "setup": "super",
+  "service": "cache",
+  "category": "crash",
+  "error": null,
+  "seconds": 22.4,
+  "calls": 11,
+  "tokens_in": 27934,
+  "tokens_out": 2705,
+  "cost": 0.01081,
+  "grade": "partly",
+  "where": true,
+  "what": true,
+  "why": false,
+  "reason": "The engineer correctly identifies the cache crash due to an invalid config directive, but does not mention the Redis upgrade/deploy that introduced the incompatibility.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED"
+  ],
+  "options": 1,
+  "blocked": 0,
+  "root_cause": "The cache (Redis) container is crashing on startup because its configuration file contains an invalid directive (`maxmemory-policy`) that the Redis 7.5 image does not accept. This causes the container to repeatedly restart and refuse connections, leading the API to return 503 errors for product searches.",
+  "truth": "A deploy upgraded Redis from 7.4 to 7.5; the new version refuses to start because the existing redis.conf uses a removed configuration directive, so the cache container crashes in a restart loop and the API cannot reach it.",
+  "check_first": "api",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00072
+}

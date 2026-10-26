@@ -1,0 +1,32 @@
+{
+  "fault": "cache_crashed",
+  "title": "Cache crashed and stayed down",
+  "kind": "preset",
+  "setup": "nano",
+  "service": "cache",
+  "category": "crash",
+  "error": null,
+  "seconds": 183.1,
+  "calls": 10,
+  "tokens_in": 34014,
+  "tokens_out": 9193,
+  "cost": 0.00425,
+  "grade": "partly",
+  "where": true,
+  "what": true,
+  "why": false,
+  "reason": "The engineer blamed the upgrade for the crash, but the real cause was a rare segfault bug with no external trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED"
+  ],
+  "options": 2,
+  "blocked": 1,
+  "root_cause": "The Redis cache container crashed with signal 11 after being upgraded to version 7.4, breaking connections to the cache and causing login and cart failures.",
+  "truth": "Redis crashed once on a rare bug (signal 11, segmentation fault). The container has no restart policy, so it stayed down, and login and cart, which keep sessions in Redis, fail.",
+  "check_first": "api container logs",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00061
+}

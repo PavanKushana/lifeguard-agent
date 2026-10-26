@@ -1,0 +1,136 @@
+{
+  "title": "Database disk full from runaway export job",
+  "alert": "Customers can browse the shop but placing orders fails with 'Something went wrong'; the admin export page times out.",
+  "truth": {
+    "service": "db",
+    "category": "disk",
+    "root_cause": "A new data export job runs every minute and writes large CSV files to /var/lib/postgresql/exports, filling the 50 GB database disk so PostgreSQL cannot write new data.",
+    "fix": "Move the largest export file from /var/lib/postgresql/exports to the root disk to free space, disable the runaway export job, then verify orders work again."
+  },
+  "changes": {
+    "containers": {
+      "db": {
+        "cpu_percent": 50.0,
+        "memory_mb": 340
+      }
+    },
+    "disks": {
+      "/var/lib/postgresql": {
+        "used_gb": 50.0
+      }
+    },
+    "files": [
+      [
+        "/var/lib/postgresql/exports/export_2026-10-26_12:00.csv",
+        15.0,
+        60
+      ],
+      [
+        "/var/lib/postgresql/exports/export_2026-10-26_12:30.csv",
+        10.0,
+        30
+      ],
+      [
+        "/var/lib/postgresql/exports/export_2026-10-26_12:59.csv",
+        6.6,
+        1
+      ]
+    ],
+    "jobs": [
+      {
+        "name": "data-export",
+        "schedule": "every minute",
+        "command": "pg_export --full > /var/lib/postgresql/exports/export_$(date +%F).csv",
+        "last_run_minutes_ago": 1
+      }
+    ],
+    "recent_changes": [
+      [
+        60,
+        "Deployed continuous data export job (pg_export every minute to /var/lib/postgresql/exports/)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 40
+      },
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "db": [
+        [
+          10,
+          "ERROR:  could not extend file \"base/16384/24576\": No space left on device"
+        ],
+        [
+          10,
+          "HINT:  Check free disk space."
+        ],
+        [
+          5,
+          "ERROR:  could not write to file \"pg_wal/xlogtemp.123\": No space left on device"
+        ],
+        [
+          2,
+          "ERROR:  could not extend file \"base/16384/24576\": No space left on device"
+        ]
+      ],
+      "api": [
+        [
+          10,
+          "ERROR POST /api/orders 500: database error, see database logs"
+        ],
+        [
+          5,
+          "ERROR POST /api/orders 500: database error, see database logs"
+        ],
+        [
+          2,
+          "ERROR POST /api/orders 500: database error, see database logs"
+        ]
+      ]
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "disk_free_gb",
+          "mount": "/var/lib/postgresql",
+          "at_least": 1.0
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "job_enabled",
+          "job": "data-export",
+          "is": false
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "logs": {
+      "db": [
+        [
+          0,
+          "LOG:  checkpoint complete: wrote 412 buffers (2.5%)"
+        ]
+      ],
+      "api": [
+        [
+          0,
+          "INFO POST /api/orders 201 in 58ms"
+        ]
+      ]
+    }
+  },
+  "id": "c11_database_disk_full_from_runaway_export_job",
+  "idea": "a runaway export job runs every minute and fills the database disk"
+}

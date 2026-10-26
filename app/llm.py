@@ -9,8 +9,9 @@ model name changes, only this file needs to change.
 
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+import httpx
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
@@ -28,14 +29,34 @@ BUSY_CODES = {429, 502, 503, 504}
 # it sheds load when it's busy. A fault build runs behind a spinner and can wait that long.
 BUSY_WAIT = 10
 BUSY_PATIENCE = 60
+# How long one request may take before it counts as failed. The library's default is 10 minutes,
+# so a connection that hangs would freeze an incident for that long (Day 11 error check). Ultra's
+# final call, the slowest, takes well under a minute; 2 minutes leaves room for a busy moment.
+REQUEST_TIMEOUT = httpx.Timeout(120.0, connect=10.0)
+
+NANO = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
+SUPER = "nvidia/nemotron-3-super-120b-a12b"
+ULTRA = "nvidia/Nemotron-3-Ultra-550b-a55b"
 
 # Which Nemotron model does which job, chosen on Day 2 after comparing them.
+# scripts/run_eval.py swaps these to compare setups (Nano alone, Super alone, all three).
 MODELS = {
-    "triage": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
-    "investigator": "nvidia/nemotron-3-super-120b-a12b",
-    "final_call": "nvidia/Nemotron-3-Ultra-550b-a55b",
+    "triage": NANO,
+    "investigator": SUPER,
+    "final_call": ULTRA,
     # Building a custom fault is creative and must fit together, so it gets the strongest model too.
-    "fault_maker": "nvidia/Nemotron-3-Ultra-550b-a55b",
+    "fault_maker": ULTRA,
+    # Grading an answer against the hidden truth (grader.py): a fixed checklist, so Super is enough.
+    "grader": SUPER,
+}
+
+# Price per million tokens (in, out) in US dollars, to estimate what an incident costs.
+# From public price lists of Nebius Token Factory, checked 26 Oct 2026; the Token Factory console
+# shows the real bill. A model missing here counts as free, so check the list when adding one.
+PRICES = {
+    NANO: (0.06, 0.24),
+    SUPER: (0.30, 0.90),
+    ULTRA: (1.00, 3.00),
 }
 
 _client = None  # created on first use, so files that never call a model don't need an API key
@@ -47,7 +68,7 @@ def get_client() -> OpenAI:
     if _client is None:
         load_dotenv()
         _client = OpenAI(base_url=TOKEN_FACTORY_URL, api_key=os.environ["NEBIUS_API_KEY"],
-                         max_retries=MAX_RETRIES)
+                         max_retries=MAX_RETRIES, timeout=REQUEST_TIMEOUT)
     return _client
 
 
@@ -84,11 +105,24 @@ class Usage:
     # Why the newest reply ended: "stop" (finished) or "length" (cut off at max_tokens).
     # Kept so a broken reply can say whether it was cut off, instead of us guessing.
     last_finish: str = ""
+    # Tokens per model, {model: [in, out]}: the models have different prices, so the cost needs both.
+    per_model: dict = field(default_factory=dict)
+
+    def cost(self) -> float:
+        """What these calls cost in US dollars, estimated from PRICES."""
+        return sum(tokens_in / 1e6 * PRICES.get(model, (0, 0))[0] + tokens_out / 1e6 * PRICES.get(model, (0, 0))[1]
+                   for model, (tokens_in, tokens_out) in self.per_model.items())
+
+    def cost_text(self) -> str:
+        """The cost in words: 'about $0.03', or 'under $0.01' for tiny amounts."""
+        cost = self.cost()
+        return "under $0.01" if cost < 0.01 else f"about ${cost:.2f}"
 
     def summary(self) -> str:
-        """One line like '5 model calls, 12.3 s, 4,210 tokens in, 1,180 out (620 of them thinking)'."""
+        """One line like '5 model calls, 12.3 s, 4,210 tokens in, 1,180 out (620 of them thinking), about $0.01'."""
         return (f"{self.calls} model calls, {self.seconds:.1f} s, "
-                f"{self.tokens_in:,} tokens in, {self.tokens_out:,} out ({self.tokens_thinking:,} of them thinking)")
+                f"{self.tokens_in:,} tokens in, {self.tokens_out:,} out ({self.tokens_thinking:,} of them thinking), "
+                f"{self.cost_text()}")
 
 
 def create_with_patience(options: dict):
@@ -128,5 +162,8 @@ def ask(job: str, messages: list, usage: Usage, tools: list | None = None, max_t
         usage.tokens_out += response.usage.completion_tokens
         details = response.usage.completion_tokens_details
         usage.tokens_thinking += (details.reasoning_tokens or 0) if details else 0
+        per_model = usage.per_model.setdefault(options["model"], [0, 0])
+        per_model[0] += response.usage.prompt_tokens
+        per_model[1] += response.usage.completion_tokens
     usage.last_finish = response.choices[0].finish_reason or ""
     return response.choices[0].message

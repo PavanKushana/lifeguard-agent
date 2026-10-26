@@ -1,0 +1,136 @@
+{
+  "title": "Database disk full due to export job",
+  "alert": "Customers can browse the product catalog but receive an error when trying to place an order.",
+  "truth": {
+    "service": "db",
+    "category": "disk",
+    "root_cause": "An export job that runs every minute writes large database dumps to the PostgreSQL data directory, filling the disk and blocking write operations.",
+    "fix": "Move the oldest export file to another disk to free space, disable the export job, then verify that orders succeed again."
+  },
+  "changes": {
+    "disks": {
+      "/var/lib/postgresql": {
+        "used_gb": 50.0
+      }
+    },
+    "files": [
+      [
+        "/var/lib/postgresql/exports/shop_export_2026-10-26_12-00.sql",
+        12.0,
+        30
+      ],
+      [
+        "/var/lib/postgresql/exports/shop_export_2026-10-26_12-30.sql",
+        10.0,
+        20
+      ],
+      [
+        "/var/lib/postgresql/exports/shop_export_2026-10-26_12-50.sql",
+        9.6,
+        10
+      ]
+    ],
+    "jobs": [
+      {
+        "name": "rotate-logs",
+        "schedule": "daily",
+        "enabled": true,
+        "last_run_minutes_ago": 530,
+        "command": "logrotate /etc/logrotate.conf"
+      },
+      {
+        "name": "export-data",
+        "schedule": "* * * * *",
+        "enabled": true,
+        "last_run_minutes_ago": 1,
+        "command": "pg_dump -U shop shop > /var/lib/postgresql/exports/shop_export_$(date +\\%F_\\%H-\\%M).sql"
+      }
+    ],
+    "recent_changes": [
+      [
+        10,
+        "Added export job that runs every minute to dump database to /var/lib/postgresql/exports"
+      ]
+    ],
+    "logs": {
+      "db": [
+        [
+          8,
+          "ERROR:  could not extend file \"base/16384/24576\": No space left on device"
+        ],
+        [
+          8,
+          "HINT:  Check free disk space."
+        ],
+        [
+          6,
+          "ERROR:  could not extend file \"base/16384/24576\": No space left on device"
+        ],
+        [
+          4,
+          "ERROR:  could not write to file \"pg_wal/xlogtemp.123\": No space left on device"
+        ],
+        [
+          2,
+          "ERROR:  could not extend file \"base/16384/24576\": No space left on device"
+        ]
+      ],
+      "api": [
+        [
+          7,
+          "ERROR POST /api/orders 500: database error, see database logs"
+        ],
+        [
+          5,
+          "ERROR POST /api/orders 500: database error, see database logs"
+        ],
+        [
+          3,
+          "ERROR POST /api/orders 500: database error, see database logs"
+        ],
+        [
+          1,
+          "ERROR POST /api/orders 500: database error, see database logs"
+        ]
+      ]
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "disk_free_gb",
+          "mount": "/var/lib/postgresql",
+          "at_least": 1.0
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "job_enabled",
+          "job": "export-data",
+          "is": false
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "logs": {
+      "db": [
+        [
+          0,
+          "LOG:  checkpoint complete: wrote 210 buffers (1.3%)"
+        ]
+      ],
+      "api": [
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "a runaway export job runs every minute and fills the database disk"
+}

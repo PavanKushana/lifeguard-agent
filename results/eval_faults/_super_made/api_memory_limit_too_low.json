@@ -1,0 +1,132 @@
+{
+  "title": "API memory limit too low",
+  "alert": "Users see 502/503 errors when loading product pages or checking API health.",
+  "truth": {
+    "service": "api",
+    "category": "config",
+    "root_cause": "Someone mistakenly lowered the API container's memory limit to 256\u202fMiB, causing it to be OOM\u2011killed under load.",
+    "fix": "Raise the API container's memory limit back to 512\u202fMiB (or restart with the correct limit)."
+  },
+  "changes": {
+    "containers": {
+      "api": {
+        "image": "shopapp/api:2.3.1",
+        "status": "restarting",
+        "exit_code": 137,
+        "since_minutes_ago": 20,
+        "restarts": 2,
+        "cpu_percent": 12.0,
+        "memory_mb": 200,
+        "memory_limit_mb": 256
+      }
+    },
+    "disks": {},
+    "files": [],
+    "jobs": [],
+    "recent_changes": [
+      [
+        30,
+        "Lowered api memory limit to 256MB"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/": {
+        "status": 502,
+        "ms": 80
+      },
+      "http://localhost/api/health": {
+        "status": 503,
+        "ms": 90
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          22,
+          "ERROR GET /api/products 503: Service Unavailable"
+        ],
+        [
+          18,
+          "ERROR GET /api/orders 503: Service Unavailable"
+        ],
+        [
+          5,
+          "ERROR GET /api/products 503: Service Unavailable"
+        ]
+      ],
+      "web": [
+        [
+          22,
+          "172.18.0.1 - - \"GET /products HTTP/1.1\" 502 512"
+        ],
+        [
+          18,
+          "172.18.0.1 - - \"GET / HTTP/1.1\" 502 512"
+        ],
+        [
+          5,
+          "172.18.0.1 - - \"GET /products HTTP/1.1\" 502 512"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "api": 20
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "container_running",
+          "container": "api"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "memory_limit_mb",
+          "container": "api",
+          "at_least": 512
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "api": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "memory_mb": 180,
+        "cpu_percent": 4.0,
+        "memory_limit_mb": 512
+      }
+    },
+    "endpoints": {
+      "http://localhost/": {
+        "status": 200,
+        "ms": 40
+      },
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          0,
+          "INFO GET /api/products 200 in 42ms"
+        ]
+      ],
+      "web": [
+        [
+          0,
+          "172.18.0.1 - - \"GET /products HTTP/1.1\" 200 5123"
+        ]
+      ]
+    }
+  },
+  "id": "custom",
+  "idea": "someone lowered the api's memory limit by mistake and it keeps getting killed"
+}

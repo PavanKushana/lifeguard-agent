@@ -1,0 +1,32 @@
+{
+  "fault": "c12_api_memory_limit_too_low",
+  "title": "API memory limit too low",
+  "kind": "custom",
+  "setup": "super",
+  "service": "api",
+  "category": "memory",
+  "error": null,
+  "seconds": 17.9,
+  "calls": 8,
+  "tokens_in": 17115,
+  "tokens_out": 2465,
+  "cost": 0.00735,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Engineer correctly identified the API container, the memory\u2011limit issue, and the reduction of the limit as the cause.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "root_cause": "The API container's memory limit was reduced to 150\u202fMiB, which is below the amount needed for its workload, causing the kernel's OOM killer to terminate it repeatedly (exit code\u202f137).",
+  "truth": "Someone lowered the api container's memory limit from 512MiB to 150MiB, below its normal working set of ~180MiB, so the kernel OOM killer repeatedly terminates it (exit code 137).",
+  "check_first": "api container logs",
+  "restarts_not_needed": 2,
+  "moved_backup": null,
+  "grader_cost": 0.00028
+}

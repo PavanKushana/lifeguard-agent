@@ -1,0 +1,32 @@
+{
+  "fault": "c09_api_n_1_query_storm",
+  "title": "API N+1 query storm",
+  "kind": "custom",
+  "setup": "super",
+  "service": "api",
+  "category": "deploy",
+  "error": null,
+  "seconds": 26.6,
+  "calls": 13,
+  "tokens_in": 37357,
+  "tokens_out": 3339,
+  "cost": 0.01421,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the API as the faulty component, notes the inefficient logic introduced by the deploy, and attributes the issue to the 2.3.2 release.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "root_cause": "The API was deployed to version 2.3.2 at 10:20 this morning; the new product\u2011listing refactor introduced inefficient logic that makes each GET /api/products request take ~3 seconds, while the database and disks remain healthy.",
+  "truth": "api 2.3.2 introduced an N+1 query pattern in the product listing: it fetches products with one query, then issues a separate query for each product's category and stock, overwhelming the database with thousands of tiny queries per page load.",
+  "check_first": "db",
+  "restarts_not_needed": 1,
+  "moved_backup": null,
+  "grader_cost": 0.00057
+}

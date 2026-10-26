@@ -1,0 +1,33 @@
+{
+  "fault": "c04_database_oom_crash_no_restart",
+  "title": "Database OOM crash, no restart",
+  "kind": "custom",
+  "setup": "nano",
+  "service": "db",
+  "category": "memory",
+  "error": null,
+  "seconds": 211.2,
+  "calls": 13,
+  "tokens_in": 43608,
+  "tokens_out": 8103,
+  "cost": 0.00456,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the db component, memory OOM problem, and the API-version query as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED",
+    "NOT FIXED"
+  ],
+  "options": 3,
+  "blocked": 0,
+  "root_cause": "The PostgreSQL container was killed by the OOM killer due to a memory\u2011intensive analytics query introduced in the new API version, leaving the data directory without pg_control and preventing the database from starting.",
+  "truth": "api 2.3.2 introduced an analytics dashboard query that makes PostgreSQL exceed its 1 GB memory limit; the database was killed (OOM, signal 9) and the container has no restart policy, so it stays down.",
+  "check_first": "docker ps (or the container management tool) to verify the db container status",
+  "restarts_not_needed": 0,
+  "moved_backup": null,
+  "grader_cost": 0.00045
+}

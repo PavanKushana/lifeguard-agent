@@ -1,0 +1,157 @@
+{
+  "title": "Database OOM crash, no restart",
+  "alert": "The shop shows 'Service unavailable' errors; the database container has stopped and isn't restarting.",
+  "truth": {
+    "service": "db",
+    "category": "memory",
+    "root_cause": "api 2.3.2 introduced an analytics dashboard query that makes PostgreSQL exceed its 1 GB memory limit; the database was killed (OOM, signal 9) and the container has no restart policy, so it stays down.",
+    "fix": "Roll back api to 2.3.1, then start the database container. Long term: fix the query or give the database more memory and enable restart policy."
+  },
+  "changes": {
+    "containers": {
+      "db": {
+        "status": "exited",
+        "exit_code": 137,
+        "restarts": 0,
+        "since_minutes_ago": 50,
+        "cpu_percent": 0.0,
+        "memory_mb": 0,
+        "memory_limit_mb": 1024
+      },
+      "api": {
+        "image": "shopapp/api:2.3.2",
+        "since_minutes_ago": 60
+      }
+    },
+    "recent_changes": [
+      [
+        60,
+        "Deployed api 2.3.2 (new analytics dashboard)"
+      ]
+    ],
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 503,
+        "ms": 5
+      }
+    },
+    "logs": {
+      "db": [
+        [
+          50,
+          "LOG:  server process (PID 1234) was terminated by signal 9: Killed"
+        ],
+        [
+          50,
+          "DETAIL:  Failed process was running: SELECT * FROM orders o JOIN order_items i ON i.order_id = o.id JOIN products p ON p.id = i.product_id GROUP BY p.category ORDER BY SUM(i.qty) DESC"
+        ],
+        [
+          49,
+          "LOG:  server process (PID 1234) was terminated by signal 9: Killed"
+        ],
+        [
+          49,
+          "LOG:  database system was not properly shut down; automatic recovery in progress"
+        ],
+        [
+          49,
+          "FATAL:  could not open control file \"global/pg_control\": No such file or directory"
+        ],
+        [
+          48,
+          "LOG:  database system is shut down"
+        ]
+      ],
+      "api": [
+        [
+          60,
+          "INFO Starting shopapp api 2.3.2"
+        ],
+        [
+          55,
+          "INFO GET /api/analytics/dashboard 200 in 120ms"
+        ],
+        [
+          50,
+          "ERROR GET /api/analytics/dashboard 500: server closed the connection unexpectedly"
+        ],
+        [
+          49,
+          "ERROR GET /api/health 503: connection to db:5432 refused"
+        ],
+        [
+          45,
+          "ERROR GET /api/products 503: connection to db:5432 refused"
+        ],
+        [
+          30,
+          "ERROR GET /api/analytics/dashboard 500: server closed the connection unexpectedly"
+        ],
+        [
+          10,
+          "ERROR GET /api/health 503: connection to db:5432 refused"
+        ]
+      ]
+    },
+    "stop_normal_logs": {
+      "db": 50,
+      "api": 50
+    }
+  },
+  "fixed_when": {
+    "users_ok": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        },
+        {
+          "check": "container_running",
+          "container": "db"
+        }
+      ]
+    },
+    "stays_fixed": {
+      "all": [
+        {
+          "check": "image",
+          "container": "api",
+          "is": "shopapp/api:2.3.1"
+        }
+      ]
+    }
+  },
+  "recovery": {
+    "containers": {
+      "db": {
+        "status": "running",
+        "since_minutes_ago": 0,
+        "memory_mb": 340,
+        "cpu_percent": 3.0
+      }
+    },
+    "endpoints": {
+      "http://localhost/api/health": {
+        "status": 200,
+        "ms": 65
+      }
+    },
+    "logs": {
+      "api": [
+        [
+          0,
+          "INFO GET /api/health 200 in 65ms"
+        ]
+      ],
+      "db": [
+        [
+          0,
+          "LOG:  database system is ready to accept connections"
+        ]
+      ]
+    }
+  },
+  "id": "c04_database_oom_crash_no_restart",
+  "idea": "the database crashed once and stayed down"
+}

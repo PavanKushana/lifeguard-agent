@@ -1,0 +1,32 @@
+{
+  "fault": "c01_redis_cache_crashes_repeatedly",
+  "title": "Redis cache crashes repeatedly",
+  "kind": "custom",
+  "setup": "super",
+  "service": "cache",
+  "category": "crash",
+  "error": null,
+  "seconds": 24.2,
+  "calls": 11,
+  "tokens_in": 26728,
+  "tokens_out": 3327,
+  "cost": 0.01101,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "Diagnosis correctly identifies the cache as the failing component, describes a crash caused by a segmentation fault, and attributes it to the Lua script introduced in API version 2.3.2.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "NOT FIXED"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "root_cause": "The API version 2.3.2 introduced a Lua script that runs inside Redis\u202f7.4 and triggers a known Lua engine bug, causing segmentation faults (signal\u202f11) and repeated cache container crashes.",
+  "truth": "api 2.3.2 introduced a new Lua script for atomic cart updates that triggers a segmentation fault in Redis 7.4, causing the cache to crash and restart every few minutes under load.",
+  "check_first": "cache container",
+  "restarts_not_needed": 1,
+  "moved_backup": null,
+  "grader_cost": 0.0005
+}

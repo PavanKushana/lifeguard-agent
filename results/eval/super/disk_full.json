@@ -1,0 +1,32 @@
+{
+  "fault": "disk_full",
+  "title": "Database disk full",
+  "kind": "preset",
+  "setup": "super",
+  "service": "db",
+  "category": "disk",
+  "error": null,
+  "seconds": 27.7,
+  "calls": 13,
+  "tokens_in": 32614,
+  "tokens_out": 3670,
+  "cost": 0.01309,
+  "grade": "right",
+  "where": true,
+  "what": true,
+  "why": true,
+  "reason": "The diagnosis correctly identifies the PostgreSQL storage as the broken part, the disk\u2011full problem, and the nightly backup job as the trigger.",
+  "fix": "FIXED",
+  "option_results": [
+    "FIXED",
+    "FIXED FOR NOW"
+  ],
+  "options": 2,
+  "blocked": 0,
+  "root_cause": "The nightly pg_dump backup job writes large dump files into the PostgreSQL storage volume, filling it to 100% and causing PostgreSQL to return 'No space left on device' errors, which the API surfaces as 500 errors on order placement.",
+  "truth": "The disk /var/lib/postgresql is 100% full because the new nightly backup job saves its dumps on the same disk, so PostgreSQL cannot write new data.",
+  "check_first": "api container",
+  "restarts_not_needed": 1,
+  "moved_backup": "older",
+  "grader_cost": 0.00045
+}
