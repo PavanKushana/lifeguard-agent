@@ -1,0 +1,51 @@
+# docker-compose.yml
+# The real shop for Lifeguard-Agent's real Docker mode: the same 4 parts as the simulated demo shop,
+# as real containers. Run it on a Linux server with Docker (the Nebius VM), never on the public demo.
+#   bash setup.sh               build the api (versions 2.3.1 and 2.3.2) and start everything
+#   bash break.sh bad-deploy    deploy the broken api 2.3.2 (it crash-loops)
+#   bash break.sh cache-crash   crash the cache (it has no restart policy, so it stays down)
+#   bash break.sh low-memory    lower the api's memory limit far too much (it gets killed again and again)
+#   bash break.sh reset         put everything back to normal
+# Each image comes from a variable with a default, so a rollback is "start this service with an older image".
+name: lifeguard-real
+
+services:
+  web:
+    container_name: web
+    image: ${WEB_IMAGE:-nginx:1.27-alpine}
+    # Only the server itself can open the shop (127.0.0.1): nobody on the internet needs it.
+    ports: ["127.0.0.1:80:80"]
+    volumes: ["./nginx.conf:/etc/nginx/conf.d/default.conf:ro"]
+    depends_on: [api]
+    restart: always
+    mem_limit: 256m
+
+  api:
+    container_name: api
+    image: ${API_IMAGE:-lifeguard/real-api:2.3.1}
+    environment: ["DB_PASSWORD=shop"]
+    depends_on: [db, cache]
+    restart: always
+    mem_limit: 512m
+
+  db:
+    container_name: db
+    image: ${DB_IMAGE:-postgres:16-alpine}
+    environment: ["POSTGRES_USER=shop", "POSTGRES_PASSWORD=shop", "POSTGRES_DB=shop"]
+    volumes: ["dbdata:/var/lib/postgresql/data", "./init.sql:/docker-entrypoint-initdb.d/init.sql:ro"]
+    restart: always
+    # 512 MB is plenty for this small shop, and all 4 limits together (1.5 GB) fit on a 2 GB server.
+    mem_limit: 512m
+
+  cache:
+    container_name: cache
+    image: ${CACHE_IMAGE:-redis:7.4-alpine}
+    # "local" lets break.sh crash Redis from inside the container (DEBUG SEGFAULT), a real segfault.
+    # Nobody outside the container can use it.
+    command: ["redis-server", "--enable-debug-command", "local"]
+    # No restart policy on purpose: a crash stays down until someone restarts it (the cache-crash fault).
+    restart: "no"
+    mem_limit: 256m
+
+volumes:
+  dbdata:

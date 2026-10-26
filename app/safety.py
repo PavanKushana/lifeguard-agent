@@ -8,6 +8,8 @@ check_options() tests every step of every option: is it a real action,
 on a real container, disk or job, with sensible values, does a move fit on the target disk,
 is there nothing that can destroy data, and does the title promise only what the steps can do?
 Options that fail are blocked, with the reason, so a human can see the guardrail working.
+On a real server (docker_tools.py) the menu is smaller, and a rollback must name an image
+that is really on the machine.
 
 The AI suggests, this file checks, a human approves. Nothing runs without all three.
 """
@@ -115,6 +117,11 @@ def check_action(server: Server, action: dict) -> str | None:
     kind = action.get("type")
     if kind not in ACTIONS:
         return f"'{kind}' is not on the action menu"
+    # Real Docker mode (docker_tools.py) allows fewer actions: it never moves files or changes jobs
+    # on the machine itself. The simulated Server has no such list, so everything on the menu is fine there.
+    allowed = getattr(server, "allowed_actions", None)
+    if allowed is not None and kind not in allowed:
+        return f"'{kind}' is turned off in real Docker mode (only {', '.join(allowed)} can run here)"
 
     missing = [p for p in ACTIONS[kind]["params"] if p not in action]
     if missing:
@@ -130,6 +137,13 @@ def check_action(server: Server, action: dict) -> str | None:
             return f"{action['to_image']} is a different program than {current}"
         if action["to_image"] == current:
             return f"{current} is already running"
+        # On a real server the older version must really be on the machine, or the rollback stops halfway.
+        images = getattr(server, "images", None)
+        if images is not None and action["to_image"] not in images:
+            program = current.split(":")[0]
+            versions = [image for image in images if image.split(":")[0] == program]
+            return (f"{action['to_image']} is not on this server "
+                    f"(versions here: {', '.join(versions) or 'none'})")
         # 22 Oct: after a one-off Redis crash, Ultra rolled the cache back from 7.4 (running for 9 days)
         # to 7.2. The simulator said FIXED, but on a real server 7.2 can't read 7.4's data files.
         if action["container"] in DATA_CONTAINERS:

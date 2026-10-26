@@ -5,9 +5,9 @@ Ultra makes the final call with fix options.
 
 Flow for one incident:
 1. triage(): Nano reads ONLY the alert and returns severity, category and a first guess as JSON.
-2. investigate(): Super gets the alert and the triage, calls tools step by step (the agent
-   loop from Day 2), searches the key error on the web once, and ends with a report:
-   root cause, evidence, fix and the web sources it used.
+2. investigate(): Super gets the alert, the triage and any close match from the memory of past
+   incidents (memory.recall), calls tools step by step (the agent loop from Day 2), searches the
+   key error on the web once, and ends with a report: root cause, evidence, fix and the web sources it used.
 3. final_call(): Ultra checks Super's report against the raw tool outputs, then gives
    2-3 fix options (each 1-3 steps from a fixed action menu), with pros, cons and how to undo each.
    safety.py checks every option before a human sees it.
@@ -22,6 +22,7 @@ a live timeline. The agent only ever sees the alert and tool outputs, never the 
 import json
 import re
 
+from app import memory
 from app.llm import Usage, ask
 from app.safety import ACTIONS, MAX_STEPS, check_options
 from app.simulator import Server
@@ -45,7 +46,8 @@ Read the alert and reply with ONLY a JSON object, no other text:
 
 INVESTIGATOR_PROMPT = f"""You are a senior site reliability engineer on call for a small web shop.
 It runs 4 Docker containers on one server: web (nginx), api (Python app), db (PostgreSQL), cache (Redis).
-You have read-only tools for the server and one web search tool. Use them to check; never guess.
+You have read-only tools for the server, a memory of past incidents and one web search tool.
+Use them to check; never guess.
 
 Work through these 5 questions in order:
 1. What do users see? (the alert)
@@ -61,6 +63,9 @@ Work through these 5 questions in order:
    Adding memory or disk only buys time; put it under long-term fixes.
 
 Rules:
+- Early on, use search_past_incidents with the main error or symptom. If this happened before, the past
+  cause and fix are a strong hint, but confirm them with the server tools: the same symptom can have a
+  different cause, and file names, versions and jobs may have changed since.
 - When you compare times, subtract the exact timestamps; "40 minutes ago" is the age of an event, not the gap between two events.
 - get_logs only returns the newest lines (oldest at the top). Ask for more lines if the first error may be older.
 - Prefer fixes that can be undone: move files instead of deleting them, and never delete the newest backup.
@@ -123,10 +128,16 @@ def investigate(server: Server, alert: str, first_look: dict, usage: Usage, on_s
 
     Returns the report text and the evidence: every tool call with its output, so Ultra can check the report.
     """
+    first_message = f"Alert: {alert}\n\nTriage (a quick first guess, may be wrong):\n{json.dumps(first_look)}"
+    # Has this shop seen this alert before? Our code checks, not Super: in 2 real runs on 26 Oct Super
+    # never used search_past_incidents, although the prompt asks for it early.
+    seen_before = memory.recall(alert)
+    if seen_before:
+        on_step("memory", seen_before)
+        first_message += f"\n\nChecked in our memory of past incidents before you started:\n{seen_before}"
     messages = [
         {"role": "system", "content": INVESTIGATOR_PROMPT},
-        {"role": "user", "content": f"Alert: {alert}\n\nTriage (a quick first guess, may be wrong):\n"
-                                    f"{json.dumps(first_look)}"},
+        {"role": "user", "content": first_message},
     ]
     tool_calls_used = 0
     searches_used = 0
@@ -262,8 +273,15 @@ def inventory(server: Server) -> str:
               for c in server.containers.values()]
     lines.append("Disks: " + ", ".join(f"{d.mount} ({d.size_gb - d.used_gb:.1f} GB free of {d.size_gb:.1f} GB)"
                                        for d in server.disks.values()))
-    lines.append("Scheduled jobs: " + ", ".join(f"{j.name} ({j.schedule}, {'on' if j.enabled else 'off'})"
-                                                for j in server.jobs.values()))
+    lines.append("Scheduled jobs: " + (", ".join(f"{j.name} ({j.schedule}, {'on' if j.enabled else 'off'})"
+                                                 for j in server.jobs.values()) or "none"))
+    # Real Docker mode (docker_tools.py): a rollback needs an image that is really on the machine,
+    # and only some actions are allowed. Saying so here saves options the safety check would block.
+    if getattr(server, "allowed_actions", None):
+        lines.append(f"This is a real server. Allowed actions here: {', '.join(server.allowed_actions)}.")
+        programs = {c.image.split(':')[0] for c in server.containers.values()}
+        images = [image for image in server.images if image.split(":")[0] in programs]
+        lines.append("Images on this server: " + (", ".join(images) or "none"))
     return "\n".join(lines)
 
 

@@ -4,7 +4,7 @@ The commands the agent can run on the fake server, made to look like real Docker
 
 Each tool reads the Server from simulator.py and returns plain text, exactly what
 an engineer would see in a terminal. The agent never knows the server is fake:
-to support a real server later, only this file needs a second version.
+for a real server, docker_tools.py has a second version of each server tool, same output.
 Every tool here only READS. Nothing in this file changes the server.
 One tool, search_web, looks things up on the internet instead (code in web_search.py).
 
@@ -15,6 +15,7 @@ which runs whatever the model asks for, safely.
 import json
 from datetime import datetime
 
+from app import memory
 from app.simulator import Server
 from app.web_search import search_web
 
@@ -36,7 +37,10 @@ def gb(value: float) -> str:
 
 def list_containers(server: Server) -> str:
     """Like 'docker ps -a': every container, its image, status and how often it restarted."""
-    lines = [f"{'NAME':<8}{'IMAGE':<20}{'RESTARTS':<10}STATUS"]
+    # At least 20 wide, wider for a long image name: "lifeguard/real-api:2.3.1" (real Docker mode)
+    # would otherwise run into the RESTARTS column and read like version 2.3.10.
+    image_width = max([20] + [len(c.image) + 2 for c in server.containers.values()])
+    lines = [f"{'NAME':<8}{'IMAGE':<{image_width}}{'RESTARTS':<10}STATUS"]
     for c in server.containers.values():
         if c.status == "running":
             status = f"Up {time_since(c.since)}"
@@ -44,7 +48,7 @@ def list_containers(server: Server) -> str:
             status = f"Restarting ({c.exit_code}) {time_since(c.since)} ago"
         else:
             status = f"Exited ({c.exit_code}) {time_since(c.since)} ago"
-        lines.append(f"{c.name:<8}{c.image:<20}{c.restarts:<10}{status}")
+        lines.append(f"{c.name:<8}{c.image:<{image_width}}{c.restarts:<10}{status}")
     return "\n".join(lines)
 
 
@@ -168,6 +172,11 @@ def web_search_tool(server: Server, query: str) -> str:
     return search_web(query)
 
 
+def past_incidents_tool(server: Server, query: str) -> str:
+    """Look for similar past incidents in the agent's memory (memory.py). The server isn't used."""
+    return memory.search_text(query)
+
+
 # The 4 containers in simulator.py, listed so the model can only pick a real one.
 CONTAINER_NAMES = ["web", "api", "db", "cache"]
 
@@ -208,6 +217,11 @@ TOOL_SCHEMAS = [
           {"url": {"type": "string",
                    "enum": ["http://localhost/", "http://localhost/api/health"]}},
           required=["url"]),
+    _tool("search_past_incidents", "Check the memory of past incidents on this shop: what happened before, "
+          "the cause and the fix that worked. Search with the main error message or symptom. A match is only "
+          "a hint: confirm it with the server tools before you trust it.",
+          {"query": {"type": "string", "description": "The main error message or symptom."}},
+          required=["query"]),
     _tool("search_web", "Search the internet for an error message. Returns the top 3 pages with title, "
           "link and a short text. Search the error text without details that only exist on this server "
           "(timestamps, process IDs, file numbers, user names).",
@@ -225,6 +239,7 @@ _FUNCTIONS = {
     "list_jobs": list_jobs,
     "recent_changes": recent_changes,
     "check_endpoint": check_endpoint,
+    "search_past_incidents": past_incidents_tool,
     "search_web": web_search_tool,
 }
 
@@ -235,13 +250,16 @@ def run_tool(server: Server, name: str, arguments: str) -> str:
     Anything unexpected (unknown tool, broken arguments) comes back as an error message
     the model can read and correct, instead of crashing the agent.
     """
-    if name not in _FUNCTIONS:
-        return f"Error: unknown tool '{name}'. Available tools: {', '.join(_FUNCTIONS)}"
+    # A real server (docker_tools.py) brings real versions of the server tools.
+    # The memory and web search tools are the same in both modes.
+    functions = {**_FUNCTIONS, **getattr(server, "real_tools", {})}
+    if name not in functions:
+        return f"Error: unknown tool '{name}'. Available tools: {', '.join(functions)}"
     try:
         args = json.loads(arguments or "{}")
         if name == "get_logs":
             # Keep the answer short enough for the model: between 1 and 50 lines.
             args["lines"] = max(1, min(int(args.get("lines", 20)), 50))
-        return _FUNCTIONS[name](server, **args)
+        return functions[name](server, **args)
     except (json.JSONDecodeError, TypeError, ValueError) as error:
         return f"Error: bad arguments for {name}: {error}"

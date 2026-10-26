@@ -31,7 +31,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-from app import llm
+from app import llm, memory
 from app.agent import handle_incident
 from app.faults import PRESETS, apply_fault
 from app.grader import grade, recommended_number
@@ -82,7 +82,12 @@ def restarts_not_needed(fault: dict, final: dict | None) -> int:
 
 
 def run_one(fault: dict, setup: str) -> dict:
-    """Run the agent once on a fresh broken server, grade the answer, and return everything worth keeping."""
+    """Run the agent once on a fresh broken server, grade the answer, and return everything worth keeping.
+
+    Without the memory of past incidents (Day 12): the memory holds our own earlier runs of these very
+    faults, so with it on, the numbers would measure the memory instead of the agent.
+    """
+    memory.ENABLED = False
     llm.MODELS.update(SETUPS[setup])
     server = Server()
     apply_fault(server, fault)

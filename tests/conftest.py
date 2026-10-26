@@ -3,7 +3,8 @@ conftest.py
 Shared test helpers (pytest finds this file by itself and hands its fixtures to every test file).
 
 no_real_telegram runs around every test by itself: tests never send real Telegram messages, even
-with a bot token and OWNER_CHAT_ID in .env. no_real_models does the same for Token Factory.
+with a bot token and OWNER_CHAT_ID in .env. no_real_models does the same for Token Factory, and
+no_real_docker for real commands on this machine (real Docker mode).
 
 ready_incident builds a broken server with a finished agent run, without any AI: the "agent's answer"
 is the fix our own code finds (validator.find_fix), so deciding on it gives a real verdict, real
@@ -12,7 +13,7 @@ recovery logs and a real postmortem.
 
 import pytest
 
-from app import llm, scoreboard, telegram_bot
+from app import docker_tools, llm, memory, scoreboard, telegram_bot
 from app.faults import PRESETS, apply_fault
 from app.llm import Usage
 from app.sessions import Incident, Session, get_or_create
@@ -46,6 +47,27 @@ def no_real_models(monkeypatch, tmp_path):
 
     monkeypatch.setattr(llm, "create_with_patience", refuse)
     monkeypatch.setattr(scoreboard, "DB_PATH", tmp_path / "scoreboard.sqlite")
+    # Each test gets its own copy of the memory, so incidents remembered in one test don't leak into the next.
+    monkeypatch.setattr(memory, "_records", list(memory._records))
+
+
+@pytest.fixture(autouse=True)
+def no_real_docker(monkeypatch, tmp_path):
+    """No test runs a real command or calls the real shop: real Docker mode only gets saved answers.
+
+    A real docker restart from a test would change whatever runs on the machine. Tests that need
+    docker output put test_docker_tools.py's fake machine on top of this. The deploy history
+    (changes.log) is a temporary file, so the real one is never written.
+    """
+    def refuse(command, timeout=None, env=None):
+        raise RuntimeError(f"a test tried to run a real command ({' '.join(command)}); use the fake machine")
+
+    def refuse_http(url, timeout=None):
+        raise RuntimeError(f"a test tried to call {url}; use a fake http_get")
+
+    monkeypatch.setattr(docker_tools, "run", refuse)
+    monkeypatch.setattr(docker_tools, "http_get", refuse_http)
+    monkeypatch.setattr(docker_tools, "CHANGES_LOG", tmp_path / "changes.log")
 
 
 @pytest.fixture

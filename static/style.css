@@ -710,6 +710,7 @@ button.armed { background: var(--warn); border-color: var(--warn); color: #1a120
 .model.super { background: var(--super-bg); color: var(--super-fg); }
 .model.ultra { background: var(--ultra-bg); color: var(--ultra-fg); }
 .model.guardrail { background: var(--guard-bg); color: var(--guard-fg); }  /* our own code, not a model */
+.model.memory { background: var(--guard-bg); color: var(--guard-fg); }     /* our own code too: the memory lookup */
 .model[title] { cursor: help; }   /* hover to read what the badge means */
 
 /* Long tool outputs and reports fold away; click to open. */

@@ -1,0 +1,182 @@
+[
+  {
+    "when": "2026-10-21 18:35",
+    "alert": "The new sales report page shows an error, and the whole shop keeps going down for a minute.",
+    "root_cause": "The API 2.4.0 deployment introduced a sales-report endpoint that runs a heavy JOIN query, which consumes nearly all of the PostgreSQL container's memory (98% of 1024 MiB limit) and triggers the Linux OOM killer (signal 9), repeatedly crashing the database and causing 500/503 errors.",
+    "evidence": [
+      "db container restarted 3 times, status 'Up 2 minutes' (list_containers)",
+      "db memory usage 1003/1024 MiB (98%) (get_metrics)",
+      "db logs show 'terminated by signal 9: Killed' with the heavy JOIN query (get_logs db)",
+      "api logs show 500/503 errors on /api/reports/sales coinciding with db crashes (get_logs api)"
+    ],
+    "fix": "Rollback API to 2.3.1",
+    "result": "FIXED",
+    "follow_up": "",
+    "source": "test run (2026-10-21_1835_db_out_of_memory.md)"
+  },
+  {
+    "when": "2026-10-21 18:53",
+    "alert": "Customers can browse the shop, but placing an order fails with 'Something went wrong'.",
+    "root_cause": "A nightly database backup job added on 2026-10-19 creates ~15.8GB dump files in /var/lib/postgresql/backups, filling the 50GB PostgreSQL volume to 100% and causing PostgreSQL write failures (\"could not extend file\") that surface as order placement errors.",
+    "evidence": [
+      "check_disk shows /var/lib/postgresql at 100% used (50GB/50GB)",
+      "check_folder_sizes shows two 15.8GB dump files in /var/lib/postgresql/backups",
+      "db container logs contain repeated \"ERROR: could not extend file ... No space left on device\"",
+      "recent_changes records addition of nightly backup job on 2026-10-19"
+    ],
+    "fix": "Move oldest backup, restart DB, disable backup job",
+    "result": "FIXED",
+    "follow_up": "Adjust the backup job to store dumps on a separate disk or external storage, rotate/retain only a limited number of backups, or compress the dumps to reduce size. Update the cron job accordingly.",
+    "source": "test run (2026-10-21_1853_disk_full.md)"
+  },
+  {
+    "when": "2026-10-22 20:05",
+    "alert": "Product pages load slowly or show 'Service unavailable' errors; the cache container has restarted several times in the last half hour.",
+    "root_cause": "The API version 2.3.2 introduced a Lua script for atomic cart updates that triggers a segmentation fault in Redis 7.4 (lua_call_function → lua_pcall → lua_resume → lua_yield), causing the cache container to crash repeatedly and leading to 500 errors and slow product pages.",
+    "evidence": [
+      "Cache logs show three segfaults at 19:37:36, 19:49:36, 20:01:36 with stack trace pointing to Lua functions",
+      "API deployed to 2.3.2 at 19:35:36 with note 'atomic cart updates with Lua script'",
+      "API logs show 500 errors 'connection to cache:6379 refused' immediately after each cache crash",
+      "Memory and disk usage are well within limits (cache memory 45/256 MiB, disks 37% used)"
+    ],
+    "fix": "Rollback API to 2.3.1",
+    "result": "FIXED",
+    "follow_up": "Investigate the Lua script for incompatibilities with Redis 7.4 (e.g., improper use of Lua coroutines or blocked commands), correct the script, test it in a staging environment, then redeploy the updated API. Consider pinning the Redis version to a known‑stable release or applying any available Redis patches that address Lua‑related segfaults.",
+    "source": "test run (2026-10-22_2005_custom.md)"
+  },
+  {
+    "when": "2026-10-22 22:22",
+    "alert": "The API health check fails and product pages return 500 errors; the web frontend still loads but shows no products.",
+    "root_cause": "The API container version 2.3.2 was deployed with incorrect database credentials (likely missing or wrong DB_PASSWORD), causing password authentication failures against PostgreSQL and resulting in 500/503 errors for API requests.",
+    "evidence": [
+      "API logs show first authentication error at 2026-10-22 21:38:15, right after deployment of api 2.3.2 at 21:37:15 (recent_changes)",
+      "Database logs confirm repeated FATAL password authentication failures for user 'shop' starting at the same timestamp (get_logs db)",
+      "Health endpoint returns HTTP 503 due to database connection failure (check_endpoint)",
+      "No memory or disk pressure exists (get_metrics, check_disk)"
+    ],
+    "fix": "Rollback API to previous version 2.3.1",
+    "result": "FIXED",
+    "follow_up": "Ensure that any image update includes validation of environment variables/secrets, and implement automated checks (e.g., CI pipeline step) that the API can connect to the database before releasing a new version.",
+    "source": "test run (2026-10-22_2222_custom.md)"
+  },
+  {
+    "when": "2026-10-22 22:25",
+    "alert": "Customers see '500 Internal Server Error' on product pages; the shop homepage loads but any dynamic request fails.",
+    "root_cause": "The cron job 'collect-debug-logs' added on 2026-10-20 writes unbounded API debug dumps to /var/log/shop/debug.log, which grew to 17.5 GB and filled the root filesystem (97% used), causing log writes to fail with ENOSPC and returning 500 errors for dynamic requests.",
+    "evidence": [
+      "API logs show repeated 'failed to write log entry: No space left on device' errors starting 2026-10-22 22:10:19",
+      "Root filesystem / is 97% used (29.1G used, 0.9G free) per check_disk",
+      "/var/log/shop/debug.log alone consumes 17.5G per check_folder_sizes",
+      "Recent changes show 'collect-debug-logs' cron job added 2026-10-20 22:25:19 writing to that exact file"
+    ],
+    "fix": "Disable cron job and move debug log to PostgreSQL volume",
+    "result": "FIXED",
+    "follow_up": "Implement log rotation for /var/log/shop/debug.log (using logrotate) with size limits, reduce the verbosity of the debug dump, or configure the cron job to write to a separate volume with adequate capacity. Monitor disk usage and set alerts for filesystem usage thresholds.",
+    "source": "test run (2026-10-22_2225_custom.md)"
+  },
+  {
+    "when": "2026-10-22 22:32",
+    "alert": "Customers can browse products, but placing an order fails with a 500 error. The issue started about an hour ago.",
+    "root_cause": "The API container was redeployed 55 minutes ago to version 2.3.2, which introduced a code change in order validation that calls .strip() on a None value, causing every POST /api/orders to return a 500 error.",
+    "evidence": [
+      "list_containers shows api container Up 55 minutes, matching the deploy time",
+      "get_logs api shows repeated 'NoneType' object has no attribute 'strip' errors starting at 21:41:17",
+      "recent_changes logs deployment of api 2.3.2 with 'refactor order validation' 55 minutes ago",
+      "Web search confirms AttributeError when calling .strip() on None"
+    ],
+    "fix": "Rollback API to previous version",
+    "result": "FIXED",
+    "follow_up": "Update the API code to guard against `None` values before calling `.strip()` (e.g., `if value: value.strip()`) or ensure the required field/config is present, then redeploy the corrected version.",
+    "source": "test run (2026-10-22_2232_random.md)"
+  },
+  {
+    "when": "2026-10-22 22:55",
+    "alert": "The shop shows 'Service unavailable' errors; the database container has stopped and isn't restarting.",
+    "root_cause": "The recent deployment of API version 2.3.2 introduced a heavy analytics query that exceeded the PostgreSQL container's 1024 MiB memory limit, causing an OOM kill (signal 9) that corrupted the database control files (global/pg_control) and prevented the DB from restarting.",
+    "evidence": [
+      "db container exited with code 137 (OOM) 50 minutes ago (list_containers)",
+      "DB logs show server process killed by signal 9 while running a heavy analytics query, then fatal error opening global/pg_control (get_logs)",
+      "Metrics show DB memory limit 1024 MiB, usage 0 MiB after crash (get_metrics)",
+      "Recent changes show API deployed to 2.3.2 (new analytics dashboard) 1 hour before crash (recent_changes)"
+    ],
+    "fix": "Rollback API to 2.3.1 and restart DB",
+    "result": "FIXED",
+    "follow_up": "Increase the PostgreSQL memory limit or optimize the heavy query (add indexes, limit result set), and implement memory‑usage alerts to catch similar spikes early. Monitor query performance after the rollout to ensure the new dashboard stays within resource bounds.",
+    "source": "test run (2026-10-22_2255_custom.md)"
+  },
+  {
+    "when": "2026-10-22 23:18",
+    "alert": "The shop is very slow and many pages end in '502 Bad Gateway'. It started less than an hour ago.",
+    "root_cause": "The sales-export cron job added 48 minutes ago runs a heavy COPY query every 5 minutes that exceeds PostgreSQL's statement_timeout (≈268 s), causing statement cancellations, API worker timeouts, and 502 errors from nginx.",
+    "evidence": [
+      "API logs show repeated 'ERROR: canceling statement due to statement timeout' and 'CRITICAL WORKER TIMEOUT' every ~9 minutes (get_logs api).",
+      "DB logs show the COPY query running for 268 seconds before being cancelled due to statement timeout (get_logs db).",
+      "sales-export job was added 48 minutes ago and runs the exact COPY query every 5 minutes (recent_changes, list_jobs).",
+      "Disk usage is normal and all containers are up, ruling out resource exhaustion (check_disk, list_containers)."
+    ],
+    "fix": "Disable sales-export job",
+    "result": "FIXED",
+    "follow_up": "Optimize the export query—add appropriate indexes on `orders.created_at`, `customers.id`, `order_items.order_id`, or export only recent data (e.g., last day) and/or increase `statement_timeout` temporarily while optimizing. Monitor query performance with `EXPLAIN ANALYZE`.",
+    "source": "test run (2026-10-22_2318_slow_db_chain.md)"
+  },
+  {
+    "when": "2026-10-22 23:42",
+    "alert": "Every page of the shop shows '502 Bad Gateway', for about 20 minutes now.",
+    "root_cause": "API container crashes on startup due to missing pydantic_settings dependency introduced in deploy 2.3.2, causing a restart loop (14 restarts) and leaving nginx with no healthy backend, resulting in 502 errors.",
+    "evidence": [
+      "API logs show repeated ModuleNotFoundError: No module named 'pydantic_settings' at 2026-10-22 23:21:11",
+      "Recent changes show deploy of api 2.3.2 'settings moved to pydantic-settings' 21 minutes ago",
+      "Container status: api is 'Restarting (1) 1 minute ago' with 14 restarts",
+      "Endpoint check returns HTTP 502"
+    ],
+    "fix": "Rollback api to 2.3.1",
+    "result": "FIXED",
+    "follow_up": "Ensure the CI/CD pipeline installs all Python dependencies (including `pydantic-settings`) before building the image, and add a health‑check or pre‑deploy test that imports the module to catch missing packages early.",
+    "source": "test run (2026-10-22_2342_bad_deploy.md)"
+  },
+  {
+    "when": "2026-10-22 23:43",
+    "alert": "The home page loads, but every product page says 'Service unavailable'.",
+    "root_cause": "The API deployment version 2.3.2 introduced incorrect database credentials (password or authentication method) that fail PostgreSQL's scram-sha-256 requirement, causing authentication failures for user 'shop' and 503 errors on product pages.",
+    "evidence": [
+      "API health endpoint returns HTTP 503 while home page returns HTTP 200 (check_endpoint).",
+      "API logs show repeated 'FATAL: password authentication failed for user \"shop\"' starting at 2026-10-22 23:09:17, minutes after 2.3.2 deployment (get_logs api).",
+      "PostgreSQL logs confirm FATAL password authentication failures for user 'shop' matching pg_hba.conf line 100 (scram-sha-256) at same timestamps (get_logs db).",
+      "Recent changes show API deployed at 2026-10-22 23:08:17 with version 2.3.2 (database settings read from environment) (recent_changes)."
+    ],
+    "fix": "Rollback API to previous version 2.3.1",
+    "result": "FIXED",
+    "follow_up": "Manage database credentials via a secure secret store or config map, and add a pre‑deploy validation step that checks DB connectivity before releasing a new API version.",
+    "source": "test run (2026-10-22_2343_wrong_db_password.md)"
+  },
+  {
+    "when": "2026-10-23 00:07",
+    "alert": "Customers can see products, but they can't log in or add anything to the cart.",
+    "root_cause": "The cache container (Redis 7.4) crashed due to a known SIGSEGV bug (signal 11) after being upgraded from Redis 7.2 nine days ago, causing the API to fail connecting to cache and return 500/503 errors for login, cart, and health endpoints.",
+    "evidence": [
+      "Cache container shows Exited (139) 25 minutes ago (list_containers)",
+      "Cache logs show Redis 7.4.0 crashed by signal 11 at 2026-10-22 23:42:32 (get_logs cache)",
+      "API logs show Error 111 connecting to cache:6379 starting at 2026-10-22 23:43:32 (get_logs api)",
+      "Recent changes show cache upgraded from redis 7.2 to 7.4 nine days ago (recent_changes)"
+    ],
+    "fix": "Restart cache container (keeps Redis 7.4)",
+    "result": "FIXED",
+    "follow_up": "Pin the cache service to a known‑stable Redis version (e.g., `redis:7.2` or a later patch release that resolves the SIGSEGV bug), monitor Redis logs for crashes, and test upgrades in a staging environment before applying to production.",
+    "source": "test run (2026-10-23_0007_cache_crashed.md)"
+  },
+  {
+    "when": "2026-10-23 00:09",
+    "alert": "The shop homepage loads but product searches fail with 'Service unavailable', and the API health check returns 503.",
+    "root_cause": "The cache container was upgraded from redis:7.4 to redis:7.5, but the mounted configuration file /etc/redis/redis.conf still contains the directive 'maxmemory-policy' which is unknown in Redis 7.5, causing the Redis server to fail on startup and enter a restart loop.",
+    "evidence": [
+      "cache logs show 'Unknown directive maxmemory-policy at line 17' immediately after the 2026-10-22 23:39:07 deploy of redis:7.5",
+      "cache container status is Restarting with 6 restarts, last 2 minutes ago",
+      "api logs show Redis connection refused errors starting at 2026-10-22 23:41:07, leading to 503 responses",
+      "recent_changes confirms only the cache image changed 30 minutes ago"
+    ],
+    "fix": "Rollback cache to redis:7.4",
+    "result": "FIXED",
+    "follow_up": "Update the Redis configuration file to be compatible with Redis 7.5 (e.g., ensure `maxmemory-policy` is a valid directive or remove it if unnecessary) before deploying the new image, or pin the cache service to a specific stable version until the config is validated.",
+    "source": "test run (2026-10-23_0009_custom.md)"
+  }
+]

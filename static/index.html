@@ -271,7 +271,8 @@
           <p class="muted">Three models work together. Nano reads the complaint and guesses where to look.
             Super checks logs, disks and recent changes, and searches the web when it finds an error.
             Ultra reads everything and decides what went wrong.
-            Steps marked <strong>Guardrail</strong> are our own code checking the AI's work.</p>
+            Steps marked <strong>Guardrail</strong> are our own code checking the AI's work, and
+            <strong>Memory</strong> is our code looking for the same problem in past incidents.</p>
           <button id="investigate" type="button" disabled>Call the agent</button>
           <!-- app.js adds one entry per agent step in here. -->
           <ol id="timeline" class="timeline"></ol>
@@ -339,7 +340,7 @@
           <span class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
           <span class="flow-tag model-super">Super</span>
           <h3>Investigates</h3>
-          <p>Runs read-only tools on logs, disks, jobs and recent changes, and searches the web.</p>
+          <p>Checks past incidents, runs read-only tools on logs, disks, jobs and recent changes, and searches the web.</p>
         </li>
         <li class="flow-step spotlight">
           <span class="flow-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg></span>
@@ -363,7 +364,7 @@
       <!-- Plain facts about the agent; js/motion.js counts the numbers up once when they come into view. -->
       <div class="stats" data-reveal>
         <div class="stat"><span class="stat-value" data-count="3">3</span><span class="stat-label">Nemotron models</span></div>
-        <div class="stat"><span class="stat-value" data-count="9">9</span><span class="stat-label">read-only tools</span></div>
+        <div class="stat"><span class="stat-value" data-count="10">10</span><span class="stat-label">read-only tools</span></div>
         <div class="stat"><span class="stat-value" data-count="5">5</span><span class="stat-label">safe fix actions</span></div>
         <div class="stat"><span class="stat-value">0</span><span class="stat-label">changes without your OK</span></div>
       </div>

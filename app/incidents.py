@@ -17,7 +17,7 @@ import logging
 import re
 import threading
 
-from app import scoreboard
+from app import memory, scoreboard
 from app.agent import format_step, handle_incident
 from app.approval import approve_option
 from app.fixes import apply_fix, verify
@@ -164,6 +164,7 @@ def decide_incident(session: Session, option: int, approved_by: str) -> dict:
         # A real on-call engineer checks the same way: not "it looks fine", but "orders succeed again".
         recovery_logs = session.fault.get("recovery", {}).get("logs", {})
         incident.proof = [f"{container}: {text}" for container, lines in recovery_logs.items() for _, text in lines]
+        remember_incident(incident, result["verdict"])
     lines = [result["verdict"], f"Decision: {incident.decision['note']}", "", "Users OK?"]
     lines += [f"  {line}" for line in result["users_ok"]] + ["Stays fixed?"]
     lines += [f"  {line}" for line in result["stays_fixed"]]
@@ -172,6 +173,20 @@ def decide_incident(session: Session, option: int, approved_by: str) -> dict:
     incident.add_step("verdict", "\n".join(lines))
     emit("decided", session, incident)
     return result
+
+
+def remember_incident(incident: Incident, verdict: str) -> None:
+    """A fix that worked goes into the agent's memory (memory.py), so a similar incident later is found faster.
+
+    It keeps what the team learned (the agent's diagnosis and the approved fix), never the hidden truth.
+    """
+    final = incident.result["final"] if incident.result else None
+    option = incident.decision.get("option") if incident.decision else None
+    if not final or not option:
+        return
+    memory.remember({"when": f"{incident.started:%Y-%m-%d %H:%M}", "alert": incident.alert,
+                     "root_cause": str(final.get("root_cause", "")), "evidence": list(final.get("evidence", []))[:4],
+                     "fix": str(option.get("title", "")), "result": verdict, "follow_up": "", "source": "demo"})
 
 
 def postmortem(session: Session) -> tuple[str, str]:

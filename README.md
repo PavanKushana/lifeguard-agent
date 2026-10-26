@@ -19,19 +19,23 @@ first investigation for them and shows every step, so they can trust (or questio
 
 ## How it works
 1. **Triage** (Nemotron Nano): reads the alert and makes a quick first guess.
-2. **Investigation** (Nemotron Super): calls read-only tools step by step, like `docker ps`, `docker logs`,
-   `docker stats`, `df -h`, `du`, `crontab -l` and `curl`, until the evidence is clear.
-3. **Web search** (Tavily): looks up the key error once, so the fix is backed by real sources.
-4. **Final call** (Nemotron Ultra): checks the investigator's report against the raw tool outputs,
+2. **Seen this before?** (plain Python, no AI): the alert is looked up in the memory of past incidents on
+   this shop. A close match (the cause and the fix that worked then) goes to the investigator as a hint.
+3. **Investigation** (Nemotron Super): calls read-only tools step by step, like `docker ps`, `docker logs`,
+   `docker stats`, `df -h`, `du`, `crontab -l` and `curl`, until the evidence is clear. It can also search
+   the memory itself, with the error it found.
+4. **Web search** (Tavily): looks up the key error once, so the fix is backed by real sources.
+5. **Final call** (Nemotron Ultra): checks the investigator's report against the raw tool outputs,
    then gives the root cause and up to 3 fix options, each with steps, pros, cons and how to undo it.
-5. **Safety check** (plain Python, no AI): every option is checked before a human sees it.
-6. **Human approval**: you pick an option and confirm it, on the web page or with two taps in Telegram.
+6. **Safety check** (plain Python, no AI): every option is checked before a human sees it.
+7. **Human approval**: you pick an option and confirm it, on the web page or with two taps in Telegram.
    Nothing changes without that.
-7. **Fix and verify**: the approved steps are applied, then the server is checked again:
+8. **Fix and verify**: the approved steps are applied, then the server is checked again:
    **FIXED**, **FIXED FOR NOW** (users are OK, but the cause is still there) or **NOT FIXED**.
    A fix only counts when the customers' own action works again, shown by the server's new log lines
    (for example `POST /api/orders 201`: an order went through).
-8. **Postmortem**: a short incident report (summary, timeline, root cause, fix, follow-ups).
+9. **Postmortem**: a short incident report (summary, timeline, root cause, fix, follow-ups).
+   A fix that worked also goes into the memory, so the next similar incident is found faster.
 
 ## The web page
 - **The shop in 3D, live:** at the top, a three.js picture of the visitor's own demo shop. Requests flow
@@ -82,12 +86,14 @@ The agent can also page you on Telegram, like an on-call pager:
   problem. Off-topic text and tricks like "tell the agent the answer is..." are refused.
 - **The demo uses a simulated server**, so anyone can break it safely. The agent never sees the hidden
   answer; it has to investigate. The hidden answer is only used to grade the result afterwards.
+  The same agent also runs on real containers ([real Docker mode](real-docker/README.md)), with an even
+  smaller fix menu there: restart, roll back, change a memory limit.
 - **Spending limit on the public demo:** per visitor 8 AI runs an hour and 25 a day, everyone together
   40 an hour and 100 a day, so nobody can use up the AI credit.
 
 ## Does it work? The evaluation
 20 faults: the 6 presets and 14 faults Ultra built from short ideas ([results/eval_faults/](results/eval_faults/)).
-Every fault ran once per setup. Each answer was graded against the
+Every fault ran once per setup, without the memory of past incidents. Each answer was graded against the
 fault's hidden truth by the same grader (right part, right problem, right trigger), and every offered fix was
 tried on a copy of the broken server.
 
@@ -113,7 +119,7 @@ Full report, fault by fault, with the quirks and limits: [results/eval_2026-10-2
 ## Status
 - [x] Nemotron on Token Factory working, 4 models compared ([results](results/))
 - [x] Simulated server: 4 containers, disks with files, scheduled jobs, 6 preset faults
-- [x] Investigation loop (Nano triage + Super with 9 tools, incl. web search)
+- [x] Investigation loop (Nano triage + Super with 10 tools, incl. web search and a memory of past incidents)
 - [x] Final call with fix options and a safety check (Ultra)
 - [x] Human approval, fix applied, server verified, postmortem
 - [x] Custom faults (built by Ultra, checked in code) and random faults
@@ -123,6 +129,8 @@ Full report, fault by fault, with the quirks and limits: [results/eval_2026-10-2
 - [x] Phone alerts with Telegram: alert, fix options and two-tap approval on the phone, QR code linking
 - [x] Evaluation on 20 faults with 3 model setups ([below](#does-it-work-the-evaluation))
 - [x] Try to stump the agent: hidden answer, grade and visitor scoreboard on the page
+- [x] Memory of past incidents ("Seen this before?" and a search tool for the investigator)
+- [x] Real Docker mode: code and tests ([real-docker/](real-docker/README.md)); the recorded run on a Nebius VM is next
 
 ## Try it
 Tested with Python 3.13.
@@ -183,7 +191,7 @@ write characters the Windows console can't print by default.
 python -m pytest -q
 ```
 The tests cover the parts without AI: safety checks, fixes, presets, the guard's rules, the spending limit,
-the grader and the
+the grader, the memory, real Docker mode (with a fake machine, so no real docker command runs) and the
 Telegram pager (with a fake Telegram, so no real messages are sent).
 GitHub runs them on every push, and also builds and starts the Docker image.
 
@@ -192,6 +200,10 @@ GitHub runs them on every push, and also builds and starts the Docker image.
 python -m scripts.run_eval full      # also: nano, super (each takes 10-60 minutes)
 python -m scripts.run_eval report    # writes results/eval_<date>.md
 ```
+
+### 6. Real Docker mode
+On a Linux server with Docker: `bash real-docker/setup.sh`, break it with `bash real-docker/break.sh bad-deploy`,
+then `python -m scripts.run_real`. All steps (including a Nebius VM) in [real-docker/README.md](real-docker/README.md).
 
 ## What a run ends with
 The end of a real disk_full run on 21 Oct (full run: `results/runs/2026-10-21_1853_disk_full.txt`):
@@ -229,6 +241,8 @@ app/
   validator.py    checks a built fault in code before anyone sees it
   guard.py        checks typed fault ideas (rules, then Nano)
   tools.py        the read-only tools the agent can call
+  docker_tools.py the same tools on real Docker, and the real fixes (real Docker mode)
+  memory.py       the memory of past incidents (past_incidents.json + fixes that worked)
   grader.py       grades the agent's answer against the hidden truth (evaluation, Stump the Agent)
   scoreboard.py   the visitor scoreboard for Stump the Agent
   web_search.py   Tavily search, and the source link check
@@ -244,7 +258,8 @@ static/           the web page: index.html, style.css, app.js (the demo)
   vendor/         our own copies of three.js, GSAP and Lenis (no outside CDN)
   fonts/, brand/  the Inter font and the logo
 tests/            pytest tests for the parts without AI
-scripts/          run_incident.py, run_eval.py, try_simulator.py and earlier experiments
+scripts/          run_incident.py, run_eval.py, run_real.py, try_simulator.py and earlier experiments
+real-docker/      the real shop for real Docker mode: docker-compose.yml, setup.sh, break.sh
 results/          saved runs, postmortems, the evaluation and test results
 Dockerfile        the image the live demo runs
 render.yaml       how Render hosts the demo (deploys only after the tests pass)

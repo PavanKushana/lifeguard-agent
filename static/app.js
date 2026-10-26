@@ -668,6 +668,7 @@ const BADGE_INFO = {
   Super: "NVIDIA Nemotron 3 Super: investigates with tools and web search",
   Ultra: "NVIDIA Nemotron 3 Ultra: the biggest model, makes the final call",
   Guardrail: "Our own code checking the AI's work. No AI model in this step.",
+  Memory: "Our own code looking the alert up in past incidents on this shop. No AI model in this step.",
 };
 
 /** When a step happened, in the visitor's own time (the server runs on UTC and sends the time zone). */
@@ -747,6 +748,15 @@ function ruleView(text) {
   return { title: "Rule check", text };
 }
 
+/** The memory's answer in one line ("Looks like the incident on 22 Oct: ..."), the details folded. */
+function memoryView(text) {
+  const found = text.match(/^1\. (\d{4}-\d{2}-\d{2})[^\n]*\n\s+Cause then: (.+)$/m);
+  const summary = found
+    ? `Looks like the incident on ${new Date(found[1]).toLocaleDateString([], { day: "numeric", month: "short" })}: ${found[2]}`
+    : "No similar past incident.";
+  return `<div class="step-text">${escapeHtml(summary)}</div>` + folded("What the memory says", text);
+}
+
 /** Add one agent step to the timeline, drawn by its kind. */
 function addStep(step) {
   const timeline = document.getElementById("timeline");
@@ -754,8 +764,13 @@ function addStep(step) {
 
   // A tool's output goes inside its tool call's entry, folded: the call is what matters at a glance.
   if (step.kind === "tool_result" && timeline.lastElementChild?.classList.contains("tool")) {
+    const entry = timeline.lastElementChild;
+    if (entry.classList.contains("memory")) {
+      entry.insertAdjacentHTML("beforeend", memoryView(step.text));
+      return;
+    }
     const label = lines.length === 1 ? "Output" : `Output (${lines.length} lines)`;
-    timeline.lastElementChild.insertAdjacentHTML("beforeend", folded(label, step.text));
+    entry.insertAdjacentHTML("beforeend", folded(label, step.text));
     return;
   }
 
@@ -765,6 +780,10 @@ function addStep(step) {
     case "triage":
       html = stepHead(step, "Nano", "First look") + `<div class="step-text">${triageText(step.text)}</div>`;
       break;
+    case "memory":
+      // Our code checked the memory with the alert before Super started (only close matches get here).
+      html = stepHead(step, "Memory", "Seen this before?") + memoryView(step.text);
+      break;
     case "thinking":
       html = stepHead(step, "Super", "Thinking") + `<div class="step-text">${escapeHtml(step.text)}</div>`;
       break;
@@ -773,9 +792,13 @@ function addStep(step) {
       const call = readableCall(step.text);
       state.focus = toolTarget(call);
       renderFocus();
-      const title = call.startsWith("search_web(")
-        ? `Web search (Tavily): <span class="code">${escapeHtml(call.slice(17, -1))}</span>`
-        : `Runs <span class="code">${escapeHtml(call)}</span>`;
+      let title = `Runs <span class="code">${escapeHtml(call)}</span>`;
+      if (call.startsWith("search_web(")) {
+        title = `Web search (Tavily): <span class="code">${escapeHtml(call.slice(17, -1))}</span>`;
+      } else if (call.startsWith("search_past_incidents(")) {
+        item.className = "tool memory";  // its answer gets a one-line summary (see tool_result above)
+        title = `Checks past incidents: <span class="code">${escapeHtml(call.slice(28, -1))}</span>`;
+      }
       html = stepHead(step, "Super", title);
       break;
     }

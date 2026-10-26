@@ -42,6 +42,7 @@ from app.validator import clean_fault, validate_fault
 # How each kind of step is labelled in the timeline.
 LABELS = {
     "triage": "TRIAGE (Nano)",
+    "memory": "SEEN BEFORE? (memory of past incidents, no AI)",
     "thinking": "THINKING",
     "tool_call": "TOOL CALL",
     "tool_result": "RESULT",

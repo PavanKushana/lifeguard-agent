@@ -1,0 +1,254 @@
+Run: custom at 2026-10-26 13:48
+Models: triage=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B, investigator=nvidia/nemotron-3-super-120b-a12b, final_call=nvidia/Nemotron-3-Ultra-550b-a55b, fault_maker=nvidia/Nemotron-3-Ultra-550b-a55b, grader=nvidia/nemotron-3-super-120b-a12b
+
+FAULT FILE: results\eval_faults\c11_database_disk_full_from_runaway_export_job.json
+ALERT: Customers can browse the shop but placing orders fails with 'Something went wrong'; the admin export page times out.
+
+[TRIAGE (Nano)]
+    {
+      "severity": "high",
+      "category": "crash",
+      "first_guess": "The API service is probably crashing or becoming unresponsive, causing order placement and export operations to fail.",
+      "check_first": "api"
+    }
+
+[TOOL CALL]
+    list_containers({})
+
+[RESULT]
+    NAME    IMAGE               RESTARTS  STATUS
+    web     nginx:1.27          0         Up 12 days
+    api     shopapp/api:2.3.1   0         Up 3 days
+    db      postgres:16         0         Up 12 days
+    cache   redis:7.4           0         Up 9 days
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/"})
+
+[RESULT]
+    HTTP 200 in 40 ms
+
+[TOOL CALL]
+    check_endpoint({"url": "http://localhost/api/health"})
+
+[RESULT]
+    HTTP 200 in 65 ms
+
+[TOOL CALL]
+    get_logs({"container": "api", "lines": 50})
+
+[RESULT]
+    2026-10-23 13:48:37 INFO Connected to database db:5432
+    2026-10-23 13:48:37 INFO Connected to cache cache:6379
+    2026-10-26 12:53:37 INFO GET /api/products 200 in 42ms
+    2026-10-26 13:07:37 INFO GET /api/products 200 in 42ms
+    2026-10-26 13:18:37 INFO GET /api/products 200 in 42ms
+    2026-10-26 13:30:37 INFO GET /api/products 200 in 42ms
+    2026-10-26 13:38:37 ERROR POST /api/orders 500: database error, see database logs
+    2026-10-26 13:42:37 INFO GET /api/products 200 in 42ms
+    2026-10-26 13:43:37 ERROR POST /api/orders 500: database error, see database logs
+    2026-10-26 13:46:37 INFO GET /api/products 200 in 42ms
+    2026-10-26 13:46:37 ERROR POST /api/orders 500: database error, see database logs
+
+[TOOL CALL]
+    get_logs({"container": "db", "lines": 50})
+
+[RESULT]
+    2026-10-14 13:48:37 LOG:  database system is ready to accept connections
+    2026-10-26 13:13:37 LOG:  checkpoint starting: time
+    2026-10-26 13:14:37 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+    2026-10-26 13:38:37 ERROR:  could not extend file "base/16384/24576": No space left on device
+    2026-10-26 13:38:37 HINT:  Check free disk space.
+    2026-10-26 13:43:37 LOG:  checkpoint starting: time
+    2026-10-26 13:43:37 ERROR:  could not write to file "pg_wal/xlogtemp.123": No space left on device
+    2026-10-26 13:44:37 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+    2026-10-26 13:46:37 ERROR:  could not extend file "base/16384/24576": No space left on device
+
+[TOOL CALL]
+    check_disk({})
+
+[RESULT]
+    Mounted on            Size    Used    Avail   Use%
+    /                     30.0G   11.2G   18.8G   37%
+    /var/lib/postgresql   50.0G   50.0G   0.0G    100%
+
+[TOOL CALL]
+    check_folder_sizes({"path": "/var/lib/postgresql"})
+
+[RESULT]
+    31.6G   2026-10-26 13:47  /var/lib/postgresql/exports
+    18.4G   2026-10-26 13:46  /var/lib/postgresql/data
+    50.0G                     total
+
+[TOOL CALL]
+    check_folder_sizes({"path": "/var/lib/postgresql/exports"})
+
+[RESULT]
+    15.0G   2026-10-26 12:48  /var/lib/postgresql/exports/export_2026-10-26_12:00.csv
+    10.0G   2026-10-26 13:18  /var/lib/postgresql/exports/export_2026-10-26_12:30.csv
+    6.6G    2026-10-26 13:47  /var/lib/postgresql/exports/export_2026-10-26_12:59.csv
+    31.6G                     total
+
+[TOOL CALL]
+    recent_changes({})
+
+[RESULT]
+    2026-10-26 12:48:37 (1 hour ago) Deployed continuous data export job (pg_export every minute to /var/lib/postgresql/exports/)
+    2026-10-23 13:48:37 (3 days ago) Deployed api 2.3.1 (fix checkout button)
+    2026-10-17 13:48:37 (9 days ago) Upgraded cache from redis 7.2 to 7.4
+
+[TOOL CALL]
+    list_jobs({})
+
+[RESULT]
+    NAME         SCHEDULE      ENABLED  LAST RUN          COMMAND
+    rotate-logs  daily         yes      2026-10-26 04:48  logrotate /etc/logrotate.conf
+    data-export  every minute  yes      2026-10-26 13:47  pg_export --full > /var/lib/postgresql/exports/export_$(date +%F).csv
+
+[TOOL CALL]
+    search_web({"query": "PostgreSQL could not extend file No space left on device"})
+
+[RESULT]
+    Web results for: PostgreSQL could not extend file No space left on device
+    1. PostgreSQL: Re: Error:could not extend file " with FileFallocate(): No space left on device
+       https://www.postgresql.org/message-id/c4d4536e-2f22-4a27-9499-6cafd1e7a941%40postgrespro.ru
+       Dear community, [...] On 9/10/24 17:11, Pecsök Ján wrote: > > Dear community, > > After upgrade of Posgres from version 13.5 to 16.2 we experience > following error: > > could not extend file > "pg_tblspc/16401/PG_16_202307071/17820/3968302971" with > FileFallocate(): No space left on device > > We cannot easily replicate problem. It happens at randomly every 1-2 > weeks of intensive query computation. > > Was there some changes in space allocation from Posgres 13.5 to [...] | Attachment | Conte...
+    2. Fix: could not extend file: No space left on device | DB Pro
+       https://www.dbpro.app/learn/postgres/errors/disk-full
+       Limited Time Offer: 40% off DB ProDB Pro 1. Learn 2. / 3. PostgreSQL 4. / 5. Errors could not extend file: No space left on device This error occurs when PostgreSQL runs out of disk space. Learn how to diagnose and prevent disk space issues. The `No space left on device` error means PostgreSQL can't write because the disk is full. Understanding the Error ERROR: could not extend file "base/16384/12345": No space left on device
+    3. PostgreSQL - Could not extend file No space left on device. HINT: Check free disk space
+       https://serverfault.com/questions/933401/postgresql-could-not-extend-file-no-space-left-on-device-hint-check-free-dis
+       2. Stack Internal Image 3Image 4 Turn scattered docs and code into trusted AI context. Explore the new Stack Internal platform. Create a workspace PostgreSQL - Could not extend file No space left on device. HINT: Check free disk space Ask Question Asked 8 years ago Modified7 years, 6 months ago Viewed 42k times This question shows research effort; it is useful and clear 6 This question does not show any research effort; it is unclear or not useful Save this question. [...] relocate PostgreSQL un...
+
+[REPORT (Super)]
+    
+    ROOT CAUSE: A newly deployed continuous export job runs every minute, writing large CSV files to `/var/lib/postgresql/exports/` until the PostgreSQL volume is completely full, causing PostgreSQL to return “No space left on device” errors that propagate as 500 responses for order placement.
+    
+    EVIDENCE:
+    - Disk check shows `/var/lib/postgresql` at 100 % usage (50 G/50 G) while the root filesystem has ample free space.  
+    - Folder size reveals `/var/lib/postgresql/exports` holds 31.6 G of large CSV export files (each 6‑15 G).  
+    - Recent changes log indicates a “continuous data export job (pg_export every minute …)” was deployed at 2026-10-26 12:48:37, coinciding with the start of the export files.  
+    - PostgreSQL logs contain repeated errors: “could not extend file … No space left on device” and “could not write to file … pg_wal/xlogtemp.123: No space left on device” beginning at 2026-10-26 13:38:37.  
+    - API logs show 500 errors on POST `/api/orders` with “database error, see database logs” at the same timestamps.
+    
+    FIX:
+    - **Quick fix:** Disable the export job to stop further writes (`disable data-export` via the job scheduler or comment out the cron line), then remove or move the oldest export files to free space (e.g., `mv /var/lib/postgresql/exports/export_*.csv /tmp/`), and verify PostgreSQL resumes normal operation by checking that no more “No space left on device” errors appear in db logs and that API order requests succeed.  
+    - **Long‑term fix:** Implement a retention policy for export files (e.g., keep only the last N exports or compress/rotate them), monitor disk usage with alerts, and consider storing exports on a separate volume or object storage rather than the PostgreSQL data directory.
+    
+    SOURCES:
+    https://www.postgresql.org/message-id/c4d4536e-2f22-4a27-9499-6cafd1e7a941%40postgrespro.ru
+    https://www.dbpro.app/learn/postgres/errors/disk-full
+    https://serverfault.com/questions/933401/postgresql-could-not-extend-file-no-space-left-on-device-hint-check-free-dis
+
+[RULE CHECK]
+    Source links in the report checked against the search results:
+      - corrected https://www.postgresql.org/message-id/c4d4536e-2f22-4a27-9499-6cafd1e7a941%2Fpostgrespro.ru
+           to https://www.postgresql.org/message-id/c4d4536e-2f22-4a27-9499-6cafd1e7a941%40postgrespro.ru
+      - corrected https://serverfault.com/questions/933401/postgresql-could-not-extract-file-no-space-left-on-device-hint-check-free-disk-space
+           to https://serverfault.com/questions/933401/postgresql-could-not-extend-file-no-space-left-on-device-hint-check-free-dis
+
+[FINAL CALL (Ultra)]
+    ROOT CAUSE (high confidence, agrees with the investigator):
+      The continuous data-export job deployed at 2026-10-26 12:48:37 writes large CSV files to /var/lib/postgresql/exports every minute, filling the PostgreSQL volume (50 GB) to 100 % and causing “No space left on device” errors that break order placement.
+    
+    EVIDENCE:
+      - /var/lib/postgresql disk at 100 % usage (50 GB/50 GB) while root has 18.8 GB free (check_disk).
+      - /var/lib/postgresql/exports holds 31.6 GB of CSV export files (check_folder_sizes).
+      - Recent changes log shows continuous data export job deployed at 2026-10-26 12:48:37 (recent_changes).
+      - PostgreSQL logs show “No space left on device” errors starting 2026-10-26 13:38:37 (get_logs db).
+    
+    OPTION 1: Disable export job and move largest export file to root filesystem  <- RECOMMENDED
+      steps:
+        1. disable_job(job=data-export)
+        2. move_files(from_path=/var/lib/postgresql/exports/export_2026-10-26_12:00.csv, to_mount=/)
+      pros:   Stops new exports immediately; Frees 15 GB on PostgreSQL volume (fits in 18.8 GB free on /); Single file move, quick and low risk
+      cons:   Leaves two newer export files (16.6 GB) on PostgreSQL volume; Root filesystem free space reduced to ~3.8 GB
+      undo:   Re-enable data-export job; move the file back from /export_2026-10-26_12:00.csv to /var/lib/postgresql/exports/
+      can be undone: yes | risk: low
+    
+    OPTION 2: Disable export job and move two recent export files to root filesystem
+      steps:
+        1. disable_job(job=data-export)
+        2. move_files(from_path=/var/lib/postgresql/exports/export_2026-10-26_12:30.csv, to_mount=/)
+        3. move_files(from_path=/var/lib/postgresql/exports/export_2026-10-26_12:59.csv, to_mount=/)
+      pros:   Stops new exports immediately; Frees 16.6 GB on PostgreSQL volume (fits in 18.8 GB free on /); Leaves only the oldest export file on PostgreSQL volume
+      cons:   Two file moves required; Root filesystem free space reduced to ~2.2 GB
+      undo:   Re-enable data-export job; move both files back from / to /var/lib/postgresql/exports/
+      can be undone: yes | risk: low
+    
+    WHY: Option 1 stops the runaway job and frees enough disk space with a single file move, minimizing steps and preserving more free space on the root filesystem.
+    
+    SOURCES:
+      https://www.postgresql.org/message-id/c4d4536e-2f22-4a27-9499-6cafd1e7a941%40postgrespro.ru
+      https://www.dbpro.app/learn/postgres/errors/disk-full
+      https://serverfault.com/questions/933401/postgresql-could-not-extend-file-no-space-left-on-device-hint-check-free-dis
+
+[SAFETY CHECK]
+    All 2 options passed the safety check.
+
+======================================================================
+YOUR DECISION
+    1. Disable export job and move largest export file to root filesystem (recommended)
+    2. Disable export job and move two recent export files to root filesystem
+    0. Reject all, change nothing
+Picked: 1
+Steps that will run:
+    1. disable_job(job=data-export)
+    2. move_files(from_path=/var/lib/postgresql/exports/export_2026-10-26_12:00.csv, to_mount=/)
+Answer: yes
+
+DECISION: approved option 1: Disable export job and move largest export file to root filesystem (by pavan at 2026-10-26 13:49:05)
+
+[APPLYING THE FIX]
+    1. turned off the job data-export
+    2. moved /var/lib/postgresql/exports/export_2026-10-26_12:00.csv (15.0 GB) to /moved-files/ on /
+
+[AFTER THE FIX]
+    $ df -h
+    Mounted on            Size    Used    Avail   Use%
+    /                     30.0G   26.2G   3.8G    87%
+    /var/lib/postgresql   50.0G   35.0G   15.0G   70%
+    
+    $ docker ps -a
+    NAME    IMAGE               RESTARTS  STATUS
+    web     nginx:1.27          0         Up 12 days
+    api     shopapp/api:2.3.1   0         Up 3 days
+    db      postgres:16         0         Up 12 days
+    cache   redis:7.4           0         Up 9 days
+    
+    $ crontab -l
+    NAME         SCHEDULE      ENABLED  LAST RUN          COMMAND
+    rotate-logs  daily         yes      2026-10-26 04:48  logrotate /etc/logrotate.conf
+    data-export  every minute  no       2026-10-26 13:47  pg_export --full > /var/lib/postgresql/exports/export_$(date +%F).csv
+    
+    $ curl http://localhost/api/health
+    HTTP 200 in 65 ms
+    
+    $ docker logs --tail 3 api
+    2026-10-26 13:46:37 INFO GET /api/products 200 in 42ms
+    2026-10-26 13:46:37 ERROR POST /api/orders 500: database error, see database logs
+    2026-10-26 13:49:05 INFO POST /api/orders 201 in 58ms
+    
+    $ docker logs --tail 3 db
+    2026-10-26 13:44:37 LOG:  checkpoint complete: wrote 389 buffers (2.4%)
+    2026-10-26 13:46:37 ERROR:  could not extend file "base/16384/24576": No space left on device
+    2026-10-26 13:49:05 LOG:  checkpoint complete: wrote 412 buffers (2.5%)
+
+[VERDICT]
+    FIXED
+    
+    Users OK?
+      OK  /var/lib/postgresql has 15.0 GB free (needs 1.0)
+    Stays fixed?
+      OK  job data-export is off
+    Watch out:
+      / is 87% full now (3.8 GB free)
+
+======================================================================
+HIDDEN TRUTH (the agent never saw this):
+    Fault:      Database disk full from runaway export job
+    Idea:       a runaway export job runs every minute and fills the database disk
+    Root cause: A new data export job runs every minute and writes large CSV files to /var/lib/postgresql/exports, filling the 50 GB database disk so PostgreSQL cannot write new data.
+    Fix:        Move the largest export file from /var/lib/postgresql/exports to the root disk to free space, disable the runaway export job, then verify orders work again.
+
+COST: 14 model calls, 27.9 s, 39,091 tokens in, 5,553 out (3,342 of them thinking), about $0.03
