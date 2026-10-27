@@ -18,4 +18,11 @@ log "Started the shop: web nginx:1.27-alpine, api 2.3.1, db postgres:16-alpine, 
 echo
 docker ps --all --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
 echo
-echo "Shop check: $(curl --silent --max-time 5 http://localhost/api/health)"
+# On the very first start Postgres sets up its database for a few seconds, and until then the api
+# answers 503 (27 Oct, first run on the VM). So ask every 2 seconds, for up to 30 seconds.
+for _ in $(seq 15); do
+  answer=$(curl --silent --max-time 5 http://localhost/api/health || true)
+  [[ "$answer" == *'"ok"'* ]] && break
+  sleep 2
+done
+echo "Shop check: $answer"

@@ -49,6 +49,7 @@ def no_real_models(monkeypatch, tmp_path):
     monkeypatch.setattr(scoreboard, "DB_PATH", tmp_path / "scoreboard.sqlite")
     # Each test gets its own copy of the memory, so incidents remembered in one test don't leak into the next.
     monkeypatch.setattr(memory, "_records", list(memory._records))
+    monkeypatch.setattr(memory, "_file", None)  # a test that switches memories (real mode) doesn't leak either
 
 
 @pytest.fixture(autouse=True)

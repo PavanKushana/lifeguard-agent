@@ -61,11 +61,27 @@ as the simulator, so the agent can't tell the difference.
    ```
    The alert comes from the shop's own health checks. Pick an option, type `y`, and the fix
    runs for real. Then the shop is checked for real (up to 75 seconds) and you get the verdict.
-8. **Reset** between runs: `bash real-docker/break.sh reset`.
+8. **Reset** between runs: `bash real-docker/break.sh reset`. For a clean start (a recording, say),
+   empty the deploy history first: `rm real-docker/changes.log`, then `bash real-docker/break.sh reset`.
 9. **When you're done, delete the VM** in the console, so it stops costing money.
 
 Each run is saved like any other: `results/runs/` (the whole timeline) and
 `results/incidents/` (the postmortem).
+
+**Memory:** the agent here remembers only this server's own incidents (`real-docker/past_incidents.json`,
+written after a fix that worked, not in git). The simulated demo's incidents are left out: in the first real
+runs, a 66% match from the simulated shop ("api 2.3.2's Lua script crashed Redis") made the agent tell that
+story about a real one-off Redis crash.
+
+## First real runs (Nebius VM, 27 Oct 2026)
+
+| Fault | Cause found | Fix | Verdict | AI time |
+|---|---|---|---|---|
+| bad-deploy | right: 2.3.2 needs `SHOP_DB_PASSWORD` | roll back api to 2.3.1 | FIXED | 17 s |
+| cache-crash | partly: right part, but blamed api 2.3.2 (from the simulated memory, see above) | restart cache | FIXED | 29 s |
+| low-memory | right: limit lowered to 16 MB, OOM kill (exit 137) | memory limit back to 512 MB, restart | FIXED | 26 s |
+
+Full runs: `results/runs/2026-10-27_00*_real.txt`, postmortems in `results/incidents/`.
 
 ## If something goes wrong
 

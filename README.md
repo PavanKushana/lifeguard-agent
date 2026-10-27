@@ -139,7 +139,8 @@ Full reports, fault by fault, with the quirks and limits: [round 1](results/eval
 - [x] Evaluation on 20 faults with 3 model setups ([below](#does-it-work-the-evaluation))
 - [x] Try to stump the agent: hidden answer, grade and visitor scoreboard on the page
 - [x] Memory of past incidents ("Seen this before?" and a search tool for the investigator)
-- [x] Real Docker mode: code and tests ([real-docker/](real-docker/README.md)); the recorded run on a Nebius VM is next
+- [x] Real Docker mode on a Nebius VM: 3 real faults, 3 of 3 FIXED, 2 causes right and 1 partly
+  ([results and what we learned](real-docker/README.md#first-real-runs-nebius-vm-27-oct-2026))
 
 ## Try it
 Tested with Python 3.13.

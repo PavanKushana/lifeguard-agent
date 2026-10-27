@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Real Docker mode: each server keeps its own deploy history and memory of past incidents.
+real-docker/changes.log
+real-docker/past_incidents.json

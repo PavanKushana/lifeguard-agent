@@ -13,6 +13,8 @@ Where the memories come from:
   scripts/build_memory.py, so the demo already remembers something on its first visit;
 - every incident decided on the demo with a fix that worked (remember()). Those are kept in the server's
   memory only, so an update of the demo starts again from the file.
+Each system remembers only its own incidents: real Docker mode switches to its own file (switch_to), because
+the simulated shop's past incidents happened on another system and can mislead the agent there.
 
 How a match is found: plain word matching, no AI. The question and every past incident become sets of
 words (lowercase, without common words like "the" or "error"), and words shared with the question count;
@@ -66,15 +68,30 @@ def record_text(record: dict) -> str:
                      record.get("fix", "")])
 
 
-def _load() -> list[dict]:
-    """The starting memory from app/past_incidents.json (empty if the file is missing)."""
+def _load(path: Path = SEED_FILE) -> list[dict]:
+    """The memory saved in a file, by default app/past_incidents.json (empty if the file is missing)."""
     try:
-        return json.loads(SEED_FILE.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
 
 
 _records: list[dict] = _load()
+# Where remember() also saves, so the memory survives a restart. None on the demo (see the top of this file).
+_file: Path | None = None
+
+
+def switch_to(path: Path) -> None:
+    """From now on, use only the incidents saved in this file (none yet if it's missing), and save new ones there.
+
+    Real Docker mode (scripts/run_real.py) does this. 27 Oct, first real runs: a real one-off Redis crash
+    matched a simulated incident at 66% ("api 2.3.2's Lua script crashed Redis"), and the agent reported that
+    story although nothing on the real server mentioned Lua. Another system's history is a wrong hint.
+    """
+    global _file
+    with _lock:
+        _file = path
+        _records[:] = _load(path)
 
 
 def search(query: str, min_match: float = MIN_MATCH) -> list[tuple[float, dict]]:
@@ -121,7 +138,12 @@ def recall(alert: str) -> str | None:
 
 
 def remember(record: dict) -> None:
-    """Add an incident whose fix worked, so the next similar one can be found (kept until the server restarts)."""
+    """Add an incident whose fix worked, so the next similar one can be found.
+
+    On the demo it's kept until the server restarts; after switch_to() it's also saved in that file.
+    """
     with _lock:
         _records.append(record)
         del _records[:-MAX_RECORDS]
+        if _file is not None:
+            _file.write_text(json.dumps(_records, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

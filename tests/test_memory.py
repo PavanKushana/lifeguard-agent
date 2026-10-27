@@ -8,6 +8,7 @@ starts, but only when the match is close.
 No AI here. Run all tests with:  python -m pytest
 """
 
+from datetime import datetime
 from types import SimpleNamespace
 
 import app.agent as agent
@@ -65,6 +66,36 @@ def test_only_a_close_match_is_recalled():
     """A bad nginx deploy shares only the symptom ("500 Internal Server Error") with a past full disk: not shown."""
     assert memory.recall("Users see '500 Internal Server Error' when visiting the shop homepage.") is None
     assert memory.recall("the coffee machine is out of beans") is None
+
+
+def test_the_real_server_has_its_own_memory(tmp_path):
+    """27 Oct: a real Redis crash matched a simulated incident and the agent made up a Lua story from it.
+
+    After switch_to, the simulated shop's incidents are gone; a fix that worked is saved in the server's
+    own file, and the next run (a new process) finds it there.
+    """
+    path = tmp_path / "past_incidents.json"
+    memory.switch_to(path)
+    assert memory.search_text("Redis segfault cache crashed").startswith("No similar past incidents")
+
+    memory.remember({"when": "2026-10-27 00:39", "alert": "Uptime check failed: /api/health answers HTTP 503.",
+                     "root_cause": "Redis crashed with signal 11 and has no restart policy", "evidence": [],
+                     "fix": "Restart cache container", "result": "FIXED", "follow_up": "", "source": "real server"})
+    memory._records.clear()  # like a new run: only the file is left
+    memory.switch_to(path)
+    assert "Restart cache container" in memory.search_text("Redis crashed signal 11")
+
+
+def test_a_real_fix_that_didnt_work_is_not_remembered(tmp_path):
+    from scripts import run_real
+
+    memory.switch_to(tmp_path / "past_incidents.json")
+    final = {"root_cause": "api 2.3.2 needs SHOP_DB_PASSWORD", "evidence": ["logs: FATAL"]}
+    decision = {"approved": True, "option": {"title": "Rollback api to 2.3.1"}}
+    run_real.remember(datetime.now(), "HTTP 502", final, decision, "NOT FIXED")
+    assert memory._records == []
+    run_real.remember(datetime.now(), "HTTP 502", final, decision, "FIXED")
+    assert memory._records[-1]["fix"] == "Rollback api to 2.3.1" and memory._records[-1]["source"] == "real server"
 
 
 def test_versions_and_names_stay_whole():

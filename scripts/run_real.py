@@ -12,12 +12,14 @@ Run it on the server with the shop (see real-docker/README.md), from the project
 
 There is no hidden truth here: the verdict comes from the live checks. The run and the
 postmortem are saved like any other run (results/runs/ and results/incidents/).
+The agent's memory here holds only this server's own incidents (real-docker/past_incidents.json):
+a fix that worked is added to it, and the simulated demo's incidents are left out.
 """
 
 import sys
 from datetime import datetime
 
-from app import docker_tools
+from app import docker_tools, memory
 from app.agent import handle_incident
 from app.docker_tools import DockerError, DockerServer
 from app.postmortem import build_postmortem, save_postmortem
@@ -26,6 +28,8 @@ from scripts.run_incident import ask_human, print_step, save_run, say, step_time
 # How long to wait for the shop to come back after a fix. Docker waits up to a minute between
 # restarts of a crash-looping container, so less than that could miss a fix that worked.
 WAIT_SECONDS = 75
+# This server's own memory of past incidents. Not in git: every server builds its own.
+REAL_MEMORY = docker_tools.REAL_DOCKER / "past_incidents.json"
 
 
 def make_alert() -> str | None:
@@ -64,6 +68,8 @@ def fix_and_verify(server: DockerServer, decision: dict | None) -> tuple[list, d
         print_step("after", "\n\n".join(f"$ {command}\n{output}" for command, output in after))
 
     lines = [result["verdict"]]
+    if approved and result["verdict"] != "NOT FIXED":
+        lines.append("(Added to this server's memory of past incidents.)")
     if not approved:
         lines.append("No fix was approved, so nothing was changed.")
     lines += ["", "Users OK?"] + [f"  {line}" for line in result["users_ok"]]
@@ -72,6 +78,20 @@ def fix_and_verify(server: DockerServer, decision: dict | None) -> tuple[list, d
         lines += ["Watch out:"] + [f"  {line}" for line in result["warnings"]]
     print_step("verdict", "\n".join(lines))
     return done, result
+
+
+def remember(started: datetime, alert: str, final: dict | None, decision: dict | None, verdict: str) -> None:
+    """A fix that worked goes into this server's memory, like on the demo (incidents.remember_incident).
+
+    It keeps what the team learned (the agent's diagnosis and the approved fix). NOT FIXED isn't kept:
+    a fix that didn't work is no hint for next time.
+    """
+    if not final or not decision or not decision["approved"] or verdict == "NOT FIXED":
+        return
+    memory.remember({"when": f"{started:%Y-%m-%d %H:%M}", "alert": alert,
+                     "root_cause": str(final.get("root_cause", "")), "evidence": list(final.get("evidence", []))[:4],
+                     "fix": str(decision["option"].get("title", "")), "result": verdict, "follow_up": "",
+                     "source": "real server"})
 
 
 def main() -> None:
@@ -91,6 +111,8 @@ def main() -> None:
     say(f"ALERT: {alert}")
     say("MODE: real Docker on this server. Fixes are real docker commands and only run after your yes.")
 
+    # Only this server's own past incidents, never the simulated demo's (see memory.switch_to).
+    memory.switch_to(REAL_MEMORY)
     result = handle_incident(server, alert, print_step)
     # The investigation took a minute; the approval checks the server as it is now.
     try:
@@ -99,6 +121,7 @@ def main() -> None:
         say(f"Couldn't read the server again ({error}); the approval checks the last reading.")
     decision = ask_human(server, result["final"])
     done, verification = fix_and_verify(server, decision)
+    remember(started, alert, result["final"], decision, verification["verdict"])
 
     postmortem = build_postmortem({**result, "alert": alert, "started": started, "times": step_times,
                                    "decision": decision, "done": done, "verification": verification})
