@@ -4,7 +4,7 @@
 
 **Live demo: [lifeguard-agent.com](https://lifeguard-agent.com)** (backup: [lifeguard-agent.onrender.com](https://lifeguard-agent.onrender.com))
 
-> 🚧 Work in progress for the Nebius x NVIDIA Global AI Hackathon (October 2026).
+Built for the Nebius x NVIDIA Global AI Hackathon (October 2026).
 
 An AI on-call engineer for small teams that run their app as Docker containers on a single server.
 
@@ -12,12 +12,32 @@ When something breaks, it investigates the way an SRE would: it reads the alert,
 logs, disk and recent changes, finds the root cause and suggests fixes. It never changes anything
 without a human approving it. Built with NVIDIA Nemotron models on Nebius Token Factory.
 
+![The Lifeguard-Agent home page with the live 3D view of the demo shop](docs/screenshots/home.png)
+
 ## Why
-Big companies have SRE teams and expensive monitoring tools. A small team with one server usually has
-one developer who gets the call when it breaks, day or night, and has to dig through logs alone. Lifeguard-Agent does that
-first investigation for them and shows every step, so they can trust (or question) the result.
+During my IT operations internship at Sears, I worked night and weekend support shifts. When something broke,
+I was the one checking resources and reading logs, and when a serious outage was too big to fix alone, I had to
+call the on-call manager. That stayed with me. Small start-ups and student teams face the same problem, but they
+can't afford another person to watch their servers all night. So I built Lifeguard-Agent. AI agents work together
+to find the cause and suggest a fix, and nothing changes until a human gives permission.
+
+## Built with NVIDIA Nemotron on Nebius Token Factory
+Every model call goes through [Nebius Token Factory](https://tokenfactory.nebius.com) (OpenAI-compatible API, see
+`app/llm.py`). Three NVIDIA Nemotron 3 models share the work, each on the job it did best when I compared them:
+
+| Model | Model ID on Token Factory | Its job |
+|---|---|---|
+| Nemotron 3 Nano | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | the first look at the alert (fast and cheap), and the guard for typed problems |
+| Nemotron 3 Super | `nvidia/nemotron-3-super-120b-a12b` | the investigation: many tool calls in a row, plus grading answers for the evaluation |
+| Nemotron 3 Ultra | `nvidia/Nemotron-3-Ultra-550b-a55b` | the final call a human acts on, and building visitors' own problems as faults |
+
+Why three and not one: [the evaluation](#does-it-work-the-evaluation) showed Super alone finds causes as well as the
+team, but Ultra's fix options were safer, so Ultra makes the final call. Web search is
+[Tavily](https://tavily.com), once per investigation, with every source link checked against the real results.
 
 ## How it works
+![How one incident flows: alert, Nano, Super with tools and Tavily, Ultra, safety check, approval, fix and verify, postmortem](docs/architecture.png)
+
 1. **Triage** (Nemotron Nano): reads the alert and makes a quick first guess.
 2. **Seen this before?** (plain Python, no AI): the alert is looked up in the memory of past incidents on
    this shop. A close match (the cause and the fix that worked then) goes to the investigator as a hint.
@@ -53,7 +73,17 @@ first investigation for them and shows every step, so they can trust (or questio
 - One step on screen at a time, light and dark theme, smooth scrolling, and on phones a tab bar at the
   bottom like an app.
 
+A real run on the live site (27 Oct), step by step:
+
+| 1. Break: the database disk is full | 2. Investigate: every step, live |
+|---|---|
+| ![The broken shop: the database disk at 100%](docs/screenshots/broken-shop.png) | ![The agent's timeline: Nano, memory, Super's tools, a guardrail, Tavily, Ultra, the safety check](docs/screenshots/timeline.png) |
+| **3. Decide: the fix options** | **4. Result: FIXED, with the proof and the hidden truth** |
+| ![The fix option with steps, pros, cons and undo](docs/screenshots/fix-options.png) | ![FIXED, an order went through, and the agent's answer next to the hidden truth](docs/screenshots/result.png) |
+
 ## Phone alerts (Telegram)
+<img src="docs/screenshots/telegram.jpg" alt="Telegram on a phone: the alert, the cause, approved from Telegram, FIXED with proof, and the postmortem file" width="300" align="right">
+
 The agent can also page you on Telegram, like an on-call pager:
 - **Link once:** the page's "Get alerts on Telegram" button opens the bot on a phone; on a laptop it shows
   a QR code to scan with the phone. The link code is random, works once and expires after 15 minutes.
@@ -64,6 +94,8 @@ The agent can also page you on Telegram, like an on-call pager:
 - **The result comes back:** the verdict with the proof from the server, and the postmortem as a file.
   The page follows along, so after a tap on the phone the website shows the result too.
 - **Owner notes:** with `OWNER_CHAT_ID` set, the owner gets a short note whenever someone uses the demo.
+
+<br clear="right">
 
 ## Safety
 - **The model can only ask.** It picks tools from a menu; my code decides what runs. All investigation
@@ -125,6 +157,13 @@ What it shows:
 Full reports, fault by fault, with the quirks and limits: [round 1](results/eval_2026-10-26.md),
 [round 2](results/eval_round2_2026-10-26.md).
 
+## On a real server
+The same agent, prompts, safety check and approval, on real Docker containers on a Nebius AI Cloud VM in Paris.
+Three real faults (a bad deploy, a Redis crash, a memory limit set too low): 3 of 3 FIXED, with real commands
+and real fixes after my approval. Steps and results: [real-docker/README.md](real-docker/README.md).
+
+![A real bad deploy fixed on the Nebius VM: rollback approved, HTTP 200, FIXED](docs/screenshots/real-docker.png)
+
 ## Status
 - [x] Nemotron on Token Factory working, 4 models compared ([results](results/))
 - [x] Simulated server: 4 containers, disks with files, scheduled jobs, 6 preset faults
@@ -140,7 +179,7 @@ Full reports, fault by fault, with the quirks and limits: [round 1](results/eval
 - [x] Try to stump the agent: hidden answer, grade and visitor scoreboard on the page
 - [x] Memory of past incidents ("Seen this before?" and a search tool for the investigator)
 - [x] Real Docker mode on a Nebius VM: 3 real faults, 3 of 3 FIXED, 2 causes right and 1 partly
-  ([results and what we learned](real-docker/README.md#first-real-runs-nebius-vm-27-oct-2026))
+  ([results and what I learned](real-docker/README.md#first-real-runs-nebius-vm-27-oct-2026))
 
 ## Try it
 Tested with Python 3.13.
@@ -265,7 +304,7 @@ app/
   limits.py       the spending limit for the public demo
 static/           the web page: index.html, style.css, app.js (the demo)
   js/             hero3d.js (the 3D shop), motion.js (smooth scrolling, fade-ins)
-  vendor/         our own copies of three.js, GSAP and Lenis (no outside CDN)
+  vendor/         local copies of three.js, GSAP and Lenis (no outside CDN)
   fonts/, brand/  the Inter font and the logo
 tests/            pytest tests for the parts without AI
 scripts/          run_incident.py, run_eval.py, run_real.py, try_simulator.py and earlier experiments
@@ -274,6 +313,11 @@ results/          saved runs, postmortems, the evaluation and test results
 Dockerfile        the image the live demo runs
 render.yaml       how Render hosts the demo (deploys only after the tests pass)
 ```
+
+## Author
+Built solo by Pavan Sai Kushana for the Nebius x NVIDIA Global AI Hackathon (October 2026).
+I built it with AI-assisted development, using Claude Code as my coding assistant. The idea and the design
+decisions are mine. I ran it, tested it on the live site and on a real server, and deployed every version myself.
 
 ## License
 MIT
