@@ -83,6 +83,11 @@ story about a real one-off Redis crash.
 
 Full runs: `results/runs/2026-10-27_00*_real.txt`, postmortems in `results/incidents/`.
 
+After the memory fix, the bad deploy ran twice more while recording the video (`2026-10-27_0107_real` and
+`_0122_real`): both FIXED, in 17 s and 11 s. The second run showed "Seen this before?" with the first one as a
+100% match, from this server's own memory, and the agent still checked the logs and the deploy history before
+it agreed.
+
 ## If something goes wrong
 
 - `permission denied ... docker.sock`: step 3 wasn't finished. Log out and in again after `usermod`.
