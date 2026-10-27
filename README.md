@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/PavanKushana/lifeguard-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/PavanKushana/lifeguard-agent/actions/workflows/tests.yml)
 
-**Live demo: [lifeguard-agent.com](https://lifeguard-agent.com)** (backup: [lifeguard-agent.onrender.com](https://lifeguard-agent.onrender.com))
+**Live demo: [lifeguard-agent.com](https://lifeguard-agent.com)**
 
 Built for the Nebius x NVIDIA Global AI Hackathon (October 2026).
 
@@ -73,13 +73,24 @@ team, but Ultra's fix options were safer, so Ultra makes the final call. Web sea
 - One step on screen at a time, light and dark theme, smooth scrolling, and on phones a tab bar at the
   bottom like an app.
 
-A real run on the live site (27 Oct), step by step:
+### A real run on the live site (27 Oct), step by step
 
-| 1. Break: the database disk is full | 2. Investigate: every step, live |
-|---|---|
-| ![The broken shop: the database disk at 100%](docs/screenshots/broken-shop.png) | ![The agent's timeline: Nano, memory, Super's tools, a guardrail, Tavily, Ultra, the safety check](docs/screenshots/timeline.png) |
-| **3. Decide: the fix options** | **4. Result: FIXED, with the proof and the hidden truth** |
-| ![The fix option with steps, pros, cons and undo](docs/screenshots/fix-options.png) | ![FIXED, an order went through, and the agent's answer next to the hidden truth](docs/screenshots/result.png) |
+**1. Break:** the database disk is full, and customers can't place orders.
+
+![The broken shop: the database disk at 100%](docs/screenshots/broken-shop.png)
+
+**2. Investigate:** every step appears live, with the model (or the code) that did it. Note the guardrail that
+sends Super back to search the web first, and the source link it corrected.
+
+<p align="center"><img src="docs/screenshots/timeline.png" alt="The agent's timeline: Nano, memory, Super's tools, a guardrail, Tavily, Ultra, the safety check" width="640"></p>
+
+**3. Decide:** the fix options with steps, pros, cons, risk and how to undo each.
+
+![The fix options with steps, pros, cons and undo](docs/screenshots/fix-options.png)
+
+**4. Result:** FIXED, proven by an order going through, and the hidden truth next to the agent's answer.
+
+![FIXED, an order went through, and the agent's answer next to the hidden truth](docs/screenshots/result.png)
 
 ## Phone alerts (Telegram)
 <img src="docs/screenshots/telegram.jpg" alt="Telegram on a phone: the alert, the cause, approved from Telegram, FIXED with proof, and the postmortem file" width="300" align="right">
