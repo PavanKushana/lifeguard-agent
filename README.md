@@ -35,6 +35,18 @@ Why three and not one: [the evaluation](#does-it-work-the-evaluation) showed Sup
 team, but Ultra's fix options were safer, so Ultra makes the final call. Web search is
 [Tavily](https://tavily.com), once per investigation, with every source link checked against the real results.
 
+**How Token Factory sped up the work:**
+- **One API for every model.** Token Factory speaks the OpenAI API, so the standard `openai` Python package worked
+  with just a base URL and a key. My first Nemotron call ran on day one.
+- **Switching models is one line.** Each job's model is a single entry in `app/llm.py`, so comparing setups
+  (the team, Nano alone, Super alone) meant changing a model name, not rewriting code.
+- **Cheap enough to test properly.** One incident costs about 1 to 3 cents. The whole evaluation, 100 runs plus
+  grading, cost about $1.52, so I could test twice instead of guessing.
+- **Usage you can show.** Every answer reports its tokens, including the model's thinking tokens, so the page and
+  each postmortem show what an incident cost.
+
+**Other Nebius services:** a Nebius AI Cloud VM (CPU-only, Ubuntu) ran the [real Docker mode](#on-a-real-server).
+
 ## How it works
 ![How one incident flows: alert, Nano, Super with tools and Tavily, Ultra, safety check, approval, fix and verify, postmortem](docs/architecture.png)
 
