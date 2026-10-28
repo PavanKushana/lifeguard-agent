@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/PavanKushana/lifeguard-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/PavanKushana/lifeguard-agent/actions/workflows/tests.yml)
 
-**Live demo: [lifeguard-agent.com](https://lifeguard-agent.com)**
+**Live demo: [lifeguard-agent.com](https://lifeguard-agent.com)** · **Demo video (2:33): [youtu.be/2FNC4A2Uhls](https://youtu.be/2FNC4A2Uhls)**
 
 Built for the Nebius x NVIDIA Global AI Hackathon (October 2026).
 
